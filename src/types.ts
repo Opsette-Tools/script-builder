@@ -7,7 +7,16 @@ export interface ObjectionCard {
   fallbackCta: string;
 }
 
+export type ScriptStyle = 'permission' | 'direct' | 'question-led';
+
+export interface AfterCallData {
+  ifYes: string;
+  ifNo: string;
+  notes: string;
+}
+
 export interface ScriptData {
+  scriptStyle: ScriptStyle;
   opener: {
     yourName: string;
     businessName: string;
@@ -39,6 +48,7 @@ export interface ScriptData {
     positive: string;
     neutral: string;
   };
+  afterCall: AfterCallData;
 }
 
 export const DEFAULT_SCRIPT_DATA: ScriptData = {
