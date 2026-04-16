@@ -170,7 +170,7 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
             <Text type="secondary" style={{ fontSize: 12 }}>If they say yes</Text>
             <TextArea
               rows={2}
-              placeholder='e.g. "Great, I\'ll send over a calendar link right now."'
+              placeholder={'e.g. "Great, I\'ll send over a calendar link right now."'}
               value={data.close.positive}
               onChange={e => updateField('close', 'positive', e.target.value)}
             />
