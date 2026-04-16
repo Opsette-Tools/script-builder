@@ -1,6 +1,6 @@
 import React from 'react';
-import { Collapse, Input, Select, Space, Typography } from 'antd';
-import { ScriptData, GREETING_STYLES, CTA_TYPES } from '../types';
+import { Collapse, Input, Select, Space, Typography, Button, Tag } from 'antd';
+import { ScriptData, GREETING_STYLES, PERMISSION_PRESETS, PROBLEM_PRESETS, CTA_PRESETS } from '../types';
 import ObjectionCards from './ObjectionCards';
 
 const { TextArea } = Input;
@@ -12,38 +12,42 @@ interface Props {
   updateSection: <K extends keyof ScriptData>(section: K, value: ScriptData[K]) => void;
 }
 
-const Field: React.FC<{
-  label: string;
-  placeholder?: string;
-  value: string;
-  onChange: (v: string) => void;
-  multiline?: boolean;
-}> = ({ label, placeholder, value, onChange, multiline }) => (
-  <div style={{ marginBottom: 12 }}>
-    <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>{label}</Text>
-    {multiline ? (
-      <TextArea rows={2} placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)} />
-    ) : (
-      <Input placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)} />
-    )}
+const QuickFill: React.FC<{ presets: string[]; onSelect: (v: string) => void }> = ({ presets, onSelect }) => (
+  <div style={{ marginBottom: 8 }}>
+    <Text type="secondary" style={{ fontSize: 11, marginRight: 6 }}>Quick fill:</Text>
+    {presets.map((p, i) => (
+      <Tag
+        key={i}
+        color="blue"
+        style={{ cursor: 'pointer', marginBottom: 4 }}
+        onClick={() => onSelect(p)}
+      >
+        {p.length > 50 ? p.slice(0, 47) + '…' : p}
+      </Tag>
+    ))}
   </div>
 );
 
 const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) => {
-  const u = (section: keyof ScriptData) => (field: string) => (value: string) =>
+  const u = (section: keyof ScriptData, field: string) => (value: string) =>
     updateField(section, field, value);
 
   const items = [
     {
       key: 'opener',
-      label: '1. Opener',
+      label: '1. Introduce Yourself',
       children: (
-        <>
-          <Field label="Your Name" placeholder="John Smith" value={data.opener.yourName} onChange={u('opener')('yourName')} />
-          <Field label="Business Name" placeholder="Acme Solutions" value={data.opener.businessName} onChange={u('opener')('businessName')} />
-          <Field label="Prospect Name / Placeholder" placeholder="[Prospect Name]" value={data.opener.prospectName} onChange={u('opener')('prospectName')} />
-          <div style={{ marginBottom: 12 }}>
-            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Greeting Style</Text>
+        <Space direction="vertical" style={{ width: '100%' }} size="small">
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>Your name</Text>
+            <Input placeholder="John Smith" value={data.opener.yourName} onChange={e => updateField('opener', 'yourName', e.target.value)} />
+          </div>
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>Your company</Text>
+            <Input placeholder="Acme Solutions" value={data.opener.businessName} onChange={e => updateField('opener', 'businessName', e.target.value)} />
+          </div>
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>Tone</Text>
             <Select
               style={{ width: '100%' }}
               value={data.opener.greetingStyle}
@@ -51,100 +55,105 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
               options={GREETING_STYLES}
             />
           </div>
-        </>
+        </Space>
       ),
     },
     {
       key: 'permissionAsk',
-      label: '2. Permission Ask',
-      children: (
-        <Field
-          label="Permission Ask Line"
-          placeholder='e.g. "Did I catch you at a bad time?"'
-          value={data.permissionAsk.line}
-          onChange={u('permissionAsk')('line')}
-        />
-      ),
-    },
-    {
-      key: 'reasonForCall',
-      label: '3. Reason for Call',
+      label: '2. Ask Permission to Continue',
       children: (
         <>
-          <Field label="Why you're reaching out" placeholder="The reason for my call is..." value={data.reasonForCall.why} onChange={u('reasonForCall')('why')} multiline />
-          <Field label="Target type of business/person" placeholder="e.g. small business owners, marketing directors" value={data.reasonForCall.targetType} onChange={u('reasonForCall')('targetType')} />
-          <Field label="Context line" placeholder="Additional context..." value={data.reasonForCall.contextLine} onChange={u('reasonForCall')('contextLine')} multiline />
+          <QuickFill presets={PERMISSION_PRESETS} onSelect={u('permissionAsk', 'line')} />
+          <TextArea
+            rows={2}
+            placeholder='e.g. "Did I catch you at a bad time?"'
+            value={data.permissionAsk.line}
+            onChange={e => updateField('permissionAsk', 'line', e.target.value)}
+          />
         </>
       ),
     },
     {
+      key: 'reasonForCall',
+      label: '3. Why Are You Calling?',
+      children: (
+        <TextArea
+          rows={3}
+          placeholder="The reason I'm calling is..."
+          value={data.reasonForCall.why}
+          onChange={e => updateField('reasonForCall', 'why', e.target.value)}
+        />
+      ),
+    },
+    {
       key: 'problem',
-      label: '4. Problem / Pain Statement',
+      label: '4. What Problem Do They Have?',
       children: (
         <>
-          <Field label="Main pain point" placeholder="The #1 problem your prospect faces" value={data.problem.mainPain} onChange={u('problem')('mainPain')} multiline />
-          <Field label="Secondary pain point" placeholder="Another related problem" value={data.problem.secondaryPain} onChange={u('problem')('secondaryPain')} multiline />
-          <Field label="Common business frustration" placeholder="A frustration they can relate to" value={data.problem.frustration} onChange={u('problem')('frustration')} multiline />
-          <Field label="Short problem summary" placeholder="In one sentence..." value={data.problem.summary} onChange={u('problem')('summary')} multiline />
+          <QuickFill presets={PROBLEM_PRESETS} onSelect={u('problem', 'mainPain')} />
+          <TextArea
+            rows={3}
+            placeholder="Describe the main pain point your prospect likely faces..."
+            value={data.problem.mainPain}
+            onChange={e => updateField('problem', 'mainPain', e.target.value)}
+          />
         </>
       ),
     },
     {
       key: 'agitate',
-      label: '5. Agitate / Consequence',
+      label: '5. Why Should They Care?',
       children: (
-        <>
-          <Field label="What this problem causes" placeholder="This leads to..." value={data.agitate.causes} onChange={u('agitate')('causes')} multiline />
-          <Field label="What it slows down / hurts" placeholder="It affects..." value={data.agitate.slowsDown} onChange={u('agitate')('slowsDown')} multiline />
-          <Field label="Why it becomes expensive / frustrating" placeholder="Over time this costs..." value={data.agitate.expensive} onChange={u('agitate')('expensive')} multiline />
-        </>
+        <TextArea
+          rows={3}
+          placeholder="What happens if they don't fix this problem? What does it cost them?"
+          value={data.agitate.consequence}
+          onChange={e => updateField('agitate', 'consequence', e.target.value)}
+        />
       ),
     },
     {
       key: 'valueProp',
-      label: '6. Value Proposition',
+      label: '6. What Do You Offer?',
       children: (
-        <>
-          <Field label="Your service / offer" placeholder="We provide..." value={data.valueProp.service} onChange={u('valueProp')('service')} multiline />
-          <Field label="Main benefit" placeholder="The biggest benefit is..." value={data.valueProp.mainBenefit} onChange={u('valueProp')('mainBenefit')} multiline />
-          <Field label="Secondary benefit" placeholder="You also get..." value={data.valueProp.secondaryBenefit} onChange={u('valueProp')('secondaryBenefit')} />
-          <Field label="Differentiator" placeholder="What makes us different..." value={data.valueProp.differentiator} onChange={u('valueProp')('differentiator')} />
-          <Field label="Quick proof / credibility line" placeholder="We've helped X companies..." value={data.valueProp.proof} onChange={u('valueProp')('proof')} multiline />
-        </>
+        <TextArea
+          rows={3}
+          placeholder="Explain what you do, how it helps, and why you're different — in 2–3 sentences."
+          value={data.valueProp.pitch}
+          onChange={e => updateField('valueProp', 'pitch', e.target.value)}
+        />
       ),
     },
     {
       key: 'qualifyingQuestion',
-      label: '7. Qualifying Question',
+      label: '7. Move Into a Conversation',
       children: (
-        <>
-          <Field label="Primary qualifying question" placeholder="How are you currently handling...?" value={data.qualifyingQuestion.primary} onChange={u('qualifyingQuestion')('primary')} multiline />
-          <Field label="Secondary qualifying question (optional)" placeholder="Have you considered...?" value={data.qualifyingQuestion.secondary} onChange={u('qualifyingQuestion')('secondary')} multiline />
-        </>
+        <TextArea
+          rows={2}
+          placeholder='Ask something like: "How are you currently handling...?"'
+          value={data.qualifyingQuestion.primary}
+          onChange={e => updateField('qualifyingQuestion', 'primary', e.target.value)}
+        />
       ),
     },
     {
       key: 'cta',
-      label: '8. Call to Action',
+      label: '8. Ask for the Next Step',
       children: (
         <>
-          <div style={{ marginBottom: 12 }}>
-            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>CTA Type</Text>
-            <Select
-              style={{ width: '100%' }}
-              value={data.cta.type}
-              onChange={v => updateField('cta', 'type', v)}
-              options={CTA_TYPES}
-            />
-          </div>
-          <Field label="CTA line" placeholder="Would you be open to a quick 15-minute call?" value={data.cta.line} onChange={u('cta')('line')} multiline />
-          <Field label="Alternative CTA line" placeholder="Or I could send you a quick summary..." value={data.cta.alternative} onChange={u('cta')('alternative')} multiline />
+          <QuickFill presets={CTA_PRESETS} onSelect={u('cta', 'line')} />
+          <TextArea
+            rows={2}
+            placeholder="What's the next step you want them to take?"
+            value={data.cta.line}
+            onChange={e => updateField('cta', 'line', e.target.value)}
+          />
         </>
       ),
     },
     {
       key: 'objections',
-      label: '9. Objection Handling',
+      label: '9. Handle Objections',
       children: (
         <ObjectionCards
           objections={data.objections}
@@ -154,20 +163,35 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
     },
     {
       key: 'close',
-      label: '10. Close / Exit Line',
+      label: '10. End the Call',
       children: (
-        <>
-          <Field label="Positive close line" placeholder="Great, I'll send over a calendar link..." value={data.close.positive} onChange={u('close')('positive')} multiline />
-          <Field label="Neutral fallback close line" placeholder="No worries, I appreciate your time..." value={data.close.neutral} onChange={u('close')('neutral')} multiline />
-        </>
+        <Space direction="vertical" style={{ width: '100%' }} size="small">
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>If they say yes</Text>
+            <TextArea
+              rows={2}
+              placeholder={'e.g. "Great, I\'ll send over a calendar link right now."'}
+              value={data.close.positive}
+              onChange={e => updateField('close', 'positive', e.target.value)}
+            />
+          </div>
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>If they say no</Text>
+            <TextArea
+              rows={2}
+              placeholder='e.g. "No worries at all — I appreciate your time."'
+              value={data.close.neutral}
+              onChange={e => updateField('close', 'neutral', e.target.value)}
+            />
+          </div>
+        </Space>
       ),
     },
   ];
 
   return (
     <Collapse
-      defaultActiveKey={['opener']}
-      accordion={false}
+      defaultActiveKey={['opener', 'permissionAsk', 'reasonForCall']}
       items={items}
       style={{ marginBottom: 16 }}
     />
