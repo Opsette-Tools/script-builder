@@ -39,7 +39,7 @@ The starters are deliberately generic. They're a skeleton, not a finished script
 
 ```bash
 npm install
-npm run dev    # http://localhost:8080/script-buddy/
+npm run dev    # http://localhost:8080/script-builder/
 ```
 
 ## Build
