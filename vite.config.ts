@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // Base path for GitHub Pages project site. Matches the repo name.
 // Update this if the repo is renamed.
-const BASE = '/script-buddy/';
+const BASE = '/script-builder/';
 
 export default defineConfig({
   base: BASE,
