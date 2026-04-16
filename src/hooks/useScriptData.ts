@@ -44,5 +44,9 @@ export function useScriptData() {
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
-  return { data, updateSection, updateField, clearAll };
+  const replaceAll = useCallback((next: ScriptData) => {
+    setData(next);
+  }, []);
+
+  return { data, updateSection, updateField, clearAll, replaceAll };
 }

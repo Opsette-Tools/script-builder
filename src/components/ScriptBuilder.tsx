@@ -1,6 +1,19 @@
 import React from 'react';
-import { Collapse, Input, Select, Space, Typography, Button, Tag } from 'antd';
-import { ScriptData, GREETING_STYLES, PERMISSION_PRESETS, PROBLEM_PRESETS, CTA_PRESETS } from '../types';
+import { Collapse, Input, Select, Space, Typography, Button, Tag, Popconfirm } from 'antd';
+import { DeleteOutlined } from '@ant-design/icons';
+import {
+  ScriptData,
+  GREETING_STYLES,
+  PERMISSION_PRESETS,
+  REASON_PRESETS,
+  PROBLEM_PRESETS,
+  AGITATE_PRESETS,
+  VALUE_PROP_PRESETS,
+  QUESTION_PRESETS,
+  CTA_PRESETS,
+  CLOSE_YES_PRESETS,
+  CLOSE_NO_PRESETS,
+} from '../types';
 import ObjectionCards from './ObjectionCards';
 
 const { TextArea } = Input;
@@ -10,6 +23,7 @@ interface Props {
   data: ScriptData;
   updateField: (section: keyof ScriptData, field: string, value: string) => void;
   updateSection: <K extends keyof ScriptData>(section: K, value: ScriptData[K]) => void;
+  onClearAll: () => void;
 }
 
 const QuickFill: React.FC<{ presets: string[]; onSelect: (v: string) => void }> = ({ presets, onSelect }) => (
@@ -28,9 +42,13 @@ const QuickFill: React.FC<{ presets: string[]; onSelect: (v: string) => void }> 
   </div>
 );
 
-const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) => {
+const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection, onClearAll }) => {
   const u = (section: keyof ScriptData, field: string) => (value: string) =>
     updateField(section, field, value);
+
+  const isReferral = data.scriptStyle === 'referral';
+  const isQuestionLed = data.scriptStyle === 'question-led';
+  const isPermission = data.scriptStyle === 'permission';
 
   const items = [
     {
@@ -46,8 +64,18 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
             <Text type="secondary" style={{ fontSize: 12 }}>Your company</Text>
             <Input placeholder="Acme Solutions" value={data.opener.businessName} onChange={e => updateField('opener', 'businessName', e.target.value)} />
           </div>
+          {isReferral && (
+            <div>
+              <Text type="secondary" style={{ fontSize: 12 }}>Who referred you?</Text>
+              <Input
+                placeholder='e.g. "Mike Johnson" or "Sarah at ABC Plumbing"'
+                value={data.opener.referrerName}
+                onChange={e => updateField('opener', 'referrerName', e.target.value)}
+              />
+            </div>
+          )}
           <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>Tone</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>Greeting tone</Text>
             <Select
               style={{ width: '100%' }}
               value={data.opener.greetingStyle}
@@ -58,7 +86,7 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
         </Space>
       ),
     },
-    {
+    ...(isPermission ? [{
       key: 'permissionAsk',
       label: '2. Ask Permission to Continue',
       children: (
@@ -66,34 +94,52 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
           <QuickFill presets={PERMISSION_PRESETS} onSelect={u('permissionAsk', 'line')} />
           <TextArea
             rows={2}
-            placeholder='e.g. "Did I catch you at a bad time?"'
+            placeholder='Ask for a moment of their time, e.g. "Did I catch you at a bad time?"'
             value={data.permissionAsk.line}
             onChange={e => updateField('permissionAsk', 'line', e.target.value)}
           />
         </>
       ),
-    },
+    }] : []),
+    ...(isQuestionLed ? [{
+      key: 'qualifyingQuestion',
+      label: '2. Open With a Question',
+      children: (
+        <>
+          <QuickFill presets={QUESTION_PRESETS} onSelect={u('qualifyingQuestion', 'primary')} />
+          <TextArea
+            rows={2}
+            placeholder='Ask a question that gets them talking, e.g. "How are you currently handling...?"'
+            value={data.qualifyingQuestion.primary}
+            onChange={e => updateField('qualifyingQuestion', 'primary', e.target.value)}
+          />
+        </>
+      ),
+    }] : []),
     {
       key: 'reasonForCall',
-      label: '3. Why Are You Calling?',
+      label: `${isPermission || isQuestionLed ? '3' : '2'}. State the Reason for Your Call`,
       children: (
-        <TextArea
-          rows={3}
-          placeholder="The reason I'm calling is..."
-          value={data.reasonForCall.why}
-          onChange={e => updateField('reasonForCall', 'why', e.target.value)}
-        />
+        <>
+          <QuickFill presets={REASON_PRESETS} onSelect={u('reasonForCall', 'why')} />
+          <TextArea
+            rows={3}
+            placeholder="In one sentence, explain why you're calling them specifically."
+            value={data.reasonForCall.why}
+            onChange={e => updateField('reasonForCall', 'why', e.target.value)}
+          />
+        </>
       ),
     },
     {
       key: 'problem',
-      label: '4. What Problem Do They Have?',
+      label: `${isPermission || isQuestionLed ? '4' : '3'}. Name the Problem They Likely Have`,
       children: (
         <>
           <QuickFill presets={PROBLEM_PRESETS} onSelect={u('problem', 'mainPain')} />
           <TextArea
             rows={3}
-            placeholder="Describe the main pain point your prospect likely faces..."
+            placeholder="Describe the main pain point your prospect is probably facing."
             value={data.problem.mainPain}
             onChange={e => updateField('problem', 'mainPain', e.target.value)}
           />
@@ -102,49 +148,58 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
     },
     {
       key: 'agitate',
-      label: '5. Why Should They Care?',
+      label: `${isPermission || isQuestionLed ? '5' : '4'}. Describe the Cost of Doing Nothing`,
       children: (
-        <TextArea
-          rows={3}
-          placeholder="What happens if they don't fix this problem? What does it cost them?"
-          value={data.agitate.consequence}
-          onChange={e => updateField('agitate', 'consequence', e.target.value)}
-        />
+        <>
+          <QuickFill presets={AGITATE_PRESETS} onSelect={u('agitate', 'consequence')} />
+          <TextArea
+            rows={3}
+            placeholder="What does this problem cost them in time, money, or missed opportunities?"
+            value={data.agitate.consequence}
+            onChange={e => updateField('agitate', 'consequence', e.target.value)}
+          />
+        </>
       ),
     },
     {
       key: 'valueProp',
-      label: '6. What Do You Offer?',
+      label: `${isPermission || isQuestionLed ? '6' : '5'}. Share What You Offer`,
       children: (
-        <TextArea
-          rows={3}
-          placeholder="Explain what you do, how it helps, and why you're different — in 2–3 sentences."
-          value={data.valueProp.pitch}
-          onChange={e => updateField('valueProp', 'pitch', e.target.value)}
-        />
+        <>
+          <QuickFill presets={VALUE_PROP_PRESETS} onSelect={u('valueProp', 'pitch')} />
+          <TextArea
+            rows={3}
+            placeholder="In 2–3 sentences: what you do, how it helps, and why you're different."
+            value={data.valueProp.pitch}
+            onChange={e => updateField('valueProp', 'pitch', e.target.value)}
+          />
+        </>
       ),
     },
-    {
+    ...(!isQuestionLed ? [{
       key: 'qualifyingQuestion',
-      label: '7. Move Into a Conversation',
+      label: `${isPermission ? '7' : '6'}. Ask a Discovery Question`,
       children: (
-        <TextArea
-          rows={2}
-          placeholder='Ask something like: "How are you currently handling...?"'
-          value={data.qualifyingQuestion.primary}
-          onChange={e => updateField('qualifyingQuestion', 'primary', e.target.value)}
-        />
+        <>
+          <QuickFill presets={QUESTION_PRESETS} onSelect={u('qualifyingQuestion', 'primary')} />
+          <TextArea
+            rows={2}
+            placeholder='Ask an open question to get them talking, e.g. "How are you currently handling...?"'
+            value={data.qualifyingQuestion.primary}
+            onChange={e => updateField('qualifyingQuestion', 'primary', e.target.value)}
+          />
+        </>
       ),
-    },
+    }] : []),
     {
       key: 'cta',
-      label: '8. Ask for the Next Step',
+      label: `${isPermission ? '8' : isQuestionLed ? '7' : '7'}. Ask for the Next Step`,
       children: (
         <>
           <QuickFill presets={CTA_PRESETS} onSelect={u('cta', 'line')} />
           <TextArea
             rows={2}
-            placeholder="What's the next step you want them to take?"
+            placeholder="What's the specific next step you want them to take?"
             value={data.cta.line}
             onChange={e => updateField('cta', 'line', e.target.value)}
           />
@@ -153,7 +208,7 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
     },
     {
       key: 'objections',
-      label: '9. Handle Objections',
+      label: `${isPermission ? '9' : '8'}. Handle Objections`,
       children: (
         <ObjectionCards
           objections={data.objections}
@@ -163,23 +218,25 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
     },
     {
       key: 'close',
-      label: '10. End the Call',
+      label: `${isPermission ? '10' : '9'}. End the Call`,
       children: (
         <Space direction="vertical" style={{ width: '100%' }} size="small">
           <div>
             <Text type="secondary" style={{ fontSize: 12 }}>If they say yes</Text>
+            <QuickFill presets={CLOSE_YES_PRESETS} onSelect={u('close', 'positive')} />
             <TextArea
               rows={2}
-              placeholder={'e.g. "Great, I\'ll send over a calendar link right now."'}
+              placeholder='How you confirm the next step once they agree.'
               value={data.close.positive}
               onChange={e => updateField('close', 'positive', e.target.value)}
             />
           </div>
           <div>
             <Text type="secondary" style={{ fontSize: 12 }}>If they say no</Text>
+            <QuickFill presets={CLOSE_NO_PRESETS} onSelect={u('close', 'neutral')} />
             <TextArea
               rows={2}
-              placeholder='e.g. "No worries at all — I appreciate your time."'
+              placeholder='How you end the call gracefully if they pass.'
               value={data.close.neutral}
               onChange={e => updateField('close', 'neutral', e.target.value)}
             />
@@ -193,7 +250,7 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
       children: (
         <Space direction="vertical" style={{ width: '100%' }} size="small">
           <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>If they say yes — what do you do next?</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>If they said yes — what do you do next?</Text>
             <TextArea
               rows={2}
               placeholder='e.g. "Send calendar invite, prep proposal, update CRM"'
@@ -202,7 +259,7 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
             />
           </div>
           <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>If they say no — what do you do next?</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>If they said no — what do you do next?</Text>
             <TextArea
               rows={2}
               placeholder='e.g. "Add to 90-day follow-up list, send nurture email"'
@@ -228,11 +285,26 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
   ];
 
   return (
-    <Collapse
-      defaultActiveKey={['opener', 'permissionAsk', 'reasonForCall']}
-      items={items}
-      style={{ marginBottom: 16 }}
-    />
+    <>
+      <Collapse
+        defaultActiveKey={['opener', 'permissionAsk', 'qualifyingQuestion', 'reasonForCall']}
+        items={items}
+        style={{ marginBottom: 16 }}
+      />
+      <div className="no-print" style={{ textAlign: 'right', marginBottom: 16 }}>
+        <Popconfirm
+          title="Clear everything?"
+          description="This will wipe all sections. Can't be undone."
+          onConfirm={onClearAll}
+          okText="Clear"
+          cancelText="Cancel"
+        >
+          <Button size="small" type="text" danger icon={<DeleteOutlined />}>
+            Clear all fields
+          </Button>
+        </Popconfirm>
+      </div>
+    </>
   );
 };
 
