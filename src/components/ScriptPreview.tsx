@@ -318,6 +318,31 @@ const ScriptPreview: React.FC<Props> = ({ data, onClearAll }) => {
           {style === 'permission' && renderPermissionStyle()}
           {style === 'direct' && renderDirectStyle()}
           {style === 'question-led' && renderQuestionLedStyle()}
+          {(data.afterCall.ifYes || data.afterCall.ifNo || data.afterCall.notes) && (
+            <>
+              <Divider />
+              <Section title="📝 Internal Notes (not part of the script)">
+                {data.afterCall.ifYes && (
+                  <ScriptLine>
+                    <Text strong style={{ color: '#389e0d' }}>✓ If yes: </Text>
+                    <Text>{data.afterCall.ifYes}</Text>
+                  </ScriptLine>
+                )}
+                {data.afterCall.ifNo && (
+                  <ScriptLine>
+                    <Text strong>✗ If no: </Text>
+                    <Text>{data.afterCall.ifNo}</Text>
+                  </ScriptLine>
+                )}
+                {data.afterCall.notes && (
+                  <ScriptLine>
+                    <Text strong>Notes: </Text>
+                    <Text>{data.afterCall.notes}</Text>
+                  </ScriptLine>
+                )}
+              </Section>
+            </>
+          )}
         </div>
       )}
     </Card>
