@@ -7,7 +7,16 @@ export interface ObjectionCard {
   fallbackCta: string;
 }
 
+export type ScriptStyle = 'permission' | 'direct' | 'question-led';
+
+export interface AfterCallData {
+  ifYes: string;
+  ifNo: string;
+  notes: string;
+}
+
 export interface ScriptData {
+  scriptStyle: ScriptStyle;
   opener: {
     yourName: string;
     businessName: string;
@@ -39,9 +48,11 @@ export interface ScriptData {
     positive: string;
     neutral: string;
   };
+  afterCall: AfterCallData;
 }
 
 export const DEFAULT_SCRIPT_DATA: ScriptData = {
+  scriptStyle: 'permission',
   opener: { yourName: '', businessName: '', greetingStyle: 'professional' },
   permissionAsk: { line: '' },
   reasonForCall: { why: '' },
@@ -52,7 +63,14 @@ export const DEFAULT_SCRIPT_DATA: ScriptData = {
   cta: { line: '' },
   objections: [],
   close: { positive: '', neutral: '' },
+  afterCall: { ifYes: '', ifNo: '', notes: '' },
 };
+
+export const SCRIPT_STYLES: { value: ScriptStyle; label: string }[] = [
+  { value: 'permission', label: 'Permission-Based' },
+  { value: 'direct', label: 'Direct' },
+  { value: 'question-led', label: 'Question-Led' },
+];
 
 export const GREETING_STYLES = [
   { value: 'professional', label: 'Professional' },

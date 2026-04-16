@@ -187,6 +187,44 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection }) =>
         </Space>
       ),
     },
+    {
+      key: 'afterCall',
+      label: '📝 After the Call (Internal)',
+      children: (
+        <Space direction="vertical" style={{ width: '100%' }} size="small">
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>If they say yes — what do you do next?</Text>
+            <TextArea
+              rows={2}
+              placeholder='e.g. "Send calendar invite, prep proposal, update CRM"'
+              value={data.afterCall.ifYes}
+              onChange={e => updateField('afterCall', 'ifYes', e.target.value)}
+            />
+          </div>
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>If they say no — what do you do next?</Text>
+            <TextArea
+              rows={2}
+              placeholder='e.g. "Add to 90-day follow-up list, send nurture email"'
+              value={data.afterCall.ifNo}
+              onChange={e => updateField('afterCall', 'ifNo', e.target.value)}
+            />
+          </div>
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>Notes / follow-up actions</Text>
+            <TextArea
+              rows={3}
+              placeholder='Any other internal reminders or next steps...'
+              value={data.afterCall.notes}
+              onChange={e => updateField('afterCall', 'notes', e.target.value)}
+            />
+          </div>
+          <Text type="secondary" italic style={{ fontSize: 11 }}>
+            ℹ️ This section is for your internal use only — it won't appear in the script preview.
+          </Text>
+        </Space>
+      ),
+    },
   ];
 
   return (
