@@ -2,7 +2,7 @@
 
 A free tool for building a structured cold call script in minutes. A [Opsette](https://opsette.io) marketplace app.
 
-🔗 **Live app:** [https://deebuilt.github.io/script-buddy/](https://deebuilt.github.io/script-buddy/)
+🔗 **Live app:** [https://deebuilt.github.io/script-builder/](https://deebuilt.github.io/script-builder/)
 
 ## What it does
 
