@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ConfigProvider, theme, Layout, Typography, Switch, Space, Row, Col } from 'antd';
+import { ConfigProvider, theme, Layout, Typography, Switch, Space, Row, Col, Segmented } from 'antd';
 import { BulbOutlined, BulbFilled } from '@ant-design/icons';
 import ScriptBuilder from './components/ScriptBuilder';
 import ScriptPreview from './components/ScriptPreview';
 import { useScriptData } from './hooks/useScriptData';
+import { ScriptStyle, SCRIPT_STYLES } from './types';
 
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
@@ -70,6 +71,14 @@ const App: React.FC = () => {
         </Header>
 
         <Content style={{ padding: '24px', maxWidth: 1400, margin: '0 auto', width: '100%' }}>
+          <div className="no-print" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <Text strong style={{ fontSize: 14 }}>Script Style:</Text>
+            <Segmented
+              value={data.scriptStyle}
+              onChange={(v) => updateSection('scriptStyle', v as ScriptStyle)}
+              options={SCRIPT_STYLES.map(s => ({ value: s.value, label: s.label }))}
+            />
+          </div>
           <Row gutter={[24, 24]}>
             <Col xs={24} lg={12}>
               <ScriptBuilder data={data} updateField={updateField} updateSection={updateSection} />
