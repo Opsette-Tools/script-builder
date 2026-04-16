@@ -52,6 +52,7 @@ export interface ScriptData {
 }
 
 export const DEFAULT_SCRIPT_DATA: ScriptData = {
+  scriptStyle: 'permission',
   opener: { yourName: '', businessName: '', greetingStyle: 'professional' },
   permissionAsk: { line: '' },
   reasonForCall: { why: '' },
@@ -62,7 +63,14 @@ export const DEFAULT_SCRIPT_DATA: ScriptData = {
   cta: { line: '' },
   objections: [],
   close: { positive: '', neutral: '' },
+  afterCall: { ifYes: '', ifNo: '', notes: '' },
 };
+
+export const SCRIPT_STYLES: { value: ScriptStyle; label: string }[] = [
+  { value: 'permission', label: 'Permission-Based' },
+  { value: 'direct', label: 'Direct' },
+  { value: 'question-led', label: 'Question-Led' },
+];
 
 export const GREETING_STYLES = [
   { value: 'professional', label: 'Professional' },
