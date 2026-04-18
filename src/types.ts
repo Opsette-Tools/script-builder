@@ -1,3 +1,12 @@
+export interface SavedScript {
+  data_id: string;
+  type: 'script';
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  script: ScriptData;
+}
+
 export interface ObjectionCard {
   id: string;
   label: string;

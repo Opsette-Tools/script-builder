@@ -5,7 +5,9 @@ import ScriptBuilder from './components/ScriptBuilder';
 import ScriptPreview from './components/ScriptPreview';
 import QuickStart from './components/QuickStart';
 import Logo from './components/Logo';
-import { useScriptData } from './hooks/useScriptData';
+import ScriptManager from './components/ScriptManager';
+import EmptyScriptState from './components/EmptyScriptState';
+import { useScripts } from './hooks/useScripts';
 import { ScriptStyle, SCRIPT_STYLES } from './types';
 
 const { useBreakpoint } = Grid;
@@ -23,7 +25,22 @@ const App: React.FC = () => {
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const screens = useBreakpoint();
   const isMobile = !screens.md;
-  const { data, updateField, updateSection, clearAll, replaceAll } = useScriptData();
+  const {
+    scripts,
+    activeId,
+    activeScript,
+    data,
+    updateField,
+    updateSection,
+    replaceAll,
+    clearActive,
+    createScript,
+    openScript,
+    renameScript,
+    saveAs,
+    duplicateScript,
+    deleteScript,
+  } = useScripts();
 
   useEffect(() => {
     try { localStorage.setItem(DARK_KEY, String(dark)); } catch {}
@@ -48,7 +65,8 @@ const App: React.FC = () => {
             borderBottom: `1px solid ${dark ? '#303030' : '#f0f0f0'}`,
             padding: '14px 24px',
             display: 'grid',
-            gridTemplateColumns: '1fr auto 1fr',
+            gridTemplateColumns: isMobile ? '1fr auto' : '1fr auto 1fr',
+            gap: isMobile ? 8 : 12,
             alignItems: 'center',
             position: 'sticky',
             top: 0,
@@ -58,18 +76,32 @@ const App: React.FC = () => {
             lineHeight: 1.4,
           }}
         >
-          <div />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', textAlign: 'center' }}>
-            <Logo size={32} color="#1677ff" />
-            <div>
-              <Title level={4} style={{ margin: 0, lineHeight: 1.2 }}>
-                Script Builder
-              </Title>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                Build a cold call script in minutes
-              </Text>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ScriptManager
+              scripts={scripts}
+              activeId={activeId}
+              activeScript={activeScript}
+              onOpen={openScript}
+              onCreate={createScript}
+              onRename={renameScript}
+              onSaveAs={saveAs}
+              onDuplicate={duplicateScript}
+              onDelete={deleteScript}
+            />
           </div>
+          {!isMobile && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', textAlign: 'center' }}>
+              <Logo size={32} color="#1677ff" />
+              <div>
+                <Title level={4} style={{ margin: 0, lineHeight: 1.2 }}>
+                  Script Builder
+                </Title>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Build a cold call script in minutes
+                </Text>
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
             {dark ? <BulbFilled /> : <BulbOutlined />}
             <Switch
@@ -82,6 +114,10 @@ const App: React.FC = () => {
         </Header>
 
         <Content style={{ padding: isMobile ? '20px 16px 16px' : '32px 24px 24px', maxWidth: 1400, margin: '0 auto', width: '100%' }}>
+          {!activeScript ? (
+            <EmptyScriptState onCreate={createScript} />
+          ) : (
+          <>
           <QuickStart data={data} onApplyTemplate={replaceAll} />
           <div className="no-print" style={{ marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
@@ -116,7 +152,7 @@ const App: React.FC = () => {
                   style={{ fontSize: 12, padding: '6px 12px', marginBottom: 12 }}
                 />
               )}
-              <ScriptBuilder data={data} updateField={updateField} updateSection={updateSection} onClearAll={clearAll} />
+              <ScriptBuilder data={data} updateField={updateField} updateSection={updateSection} onClearAll={clearActive} />
             </Col>
             <Col xs={24} lg={12}>
               <div style={{ position: 'sticky', top: 80 }}>
@@ -124,6 +160,8 @@ const App: React.FC = () => {
               </div>
             </Col>
           </Row>
+          </>
+          )}
         </Content>
 
         <Footer
