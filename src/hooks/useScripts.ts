@@ -6,6 +6,7 @@ const SCRIPTS_KEY = 'script-builder.scripts.v1';
 const DRAFTS_KEY = 'script-builder.drafts.v1';
 const ACTIVE_KEY = 'script-builder.activeId.v1';
 const LEGACY_KEY = 'cold-call-script-data';
+const MIGRATED_KEY = 'script-builder.migrated';
 
 type DraftMap = Record<string, ScriptData>;
 
@@ -35,6 +36,11 @@ function makeScript(name: string, script: ScriptData = DEFAULT_SCRIPT_DATA): Sav
 
 function scriptsEqual(a: ScriptData, b: ScriptData): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function toWire(s: SavedScript): Omit<SavedScript, 'type'> {
+  const { type: _type, ...rest } = s;
+  return rest;
 }
 
 function hydrateFromBridge(bridge: Bridge): { scripts: SavedScript[]; activeId: string | null } {
@@ -69,7 +75,10 @@ function loadFromLocalStorage(): { scripts: SavedScript[]; drafts: DraftMap; act
     }
   } catch {}
 
-  if (scripts.length === 0) {
+  const alreadyMigrated = (() => {
+    try { return localStorage.getItem(MIGRATED_KEY) === 'true'; } catch { return false; }
+  })();
+  if (scripts.length === 0 && !alreadyMigrated) {
     try {
       const legacy = localStorage.getItem(LEGACY_KEY);
       if (legacy) {
@@ -80,6 +89,7 @@ function loadFromLocalStorage(): { scripts: SavedScript[]; drafts: DraftMap; act
         try { localStorage.setItem(SCRIPTS_KEY, JSON.stringify(scripts)); } catch {}
       }
     } catch {}
+    try { localStorage.setItem(MIGRATED_KEY, 'true'); } catch {}
   }
 
   let drafts: DraftMap = {};
@@ -271,7 +281,7 @@ export function useScripts() {
 
     const results = await Promise.allSettled(dirtyEntries.map(e => {
       const value: SavedScript = { ...e.script, script: e.draft, updatedAt: ts };
-      return bridge.save(e.id, value);
+      return bridge.save(e.id, toWire(value));
     }));
 
     const errors: Error[] = [];
@@ -305,7 +315,7 @@ export function useScripts() {
     setScripts(prev => [...prev, next]);
     setActiveId(next.data_id);
     if (bridge) {
-      bridge.save(next.data_id, next).catch(() => {});
+      bridge.save(next.data_id, toWire(next)).catch(() => {});
     }
     return next.data_id;
   }, [bridge]);
@@ -324,7 +334,7 @@ export function useScripts() {
       return updated;
     }));
     if (bridge && updated) {
-      bridge.save(id, updated).catch(() => {});
+      bridge.save(id, toWire(updated)).catch(() => {});
     }
   }, [bridge]);
 
@@ -336,7 +346,7 @@ export function useScripts() {
     setScripts(prev => [...prev, copy]);
     setActiveId(copy.data_id);
     if (bridge) {
-      bridge.save(copy.data_id, copy).catch(() => {});
+      bridge.save(copy.data_id, toWire(copy)).catch(() => {});
     }
     return copy.data_id;
   }, [scripts, drafts, bridge]);
@@ -354,7 +364,7 @@ export function useScripts() {
     });
     setActiveId(copy.data_id);
     if (bridge) {
-      bridge.save(copy.data_id, copy).catch(() => {});
+      bridge.save(copy.data_id, toWire(copy)).catch(() => {});
     }
     return copy.data_id;
   }, [activeId, drafts, persistedActive, bridge]);
