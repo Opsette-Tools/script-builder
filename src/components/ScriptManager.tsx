@@ -10,6 +10,7 @@ interface Props {
   activeId: string | null;
   activeScript: SavedScript | null;
   isDirty: boolean;
+  activeDirty: boolean;
   dirtyIds: Set<string>;
   onOpen: (id: string) => void;
   onCreate: (name: string) => void;
@@ -18,7 +19,7 @@ interface Props {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onSave: () => void;
-  onDiscard: () => void;
+  onDiscard: (id?: string) => void;
 }
 
 type ModalMode = 'create' | 'rename' | 'saveAs' | null;
@@ -28,6 +29,7 @@ const ScriptManager: React.FC<Props> = ({
   activeId,
   activeScript,
   isDirty,
+  activeDirty,
   dirtyIds,
   onOpen,
   onCreate,
@@ -40,7 +42,6 @@ const ScriptManager: React.FC<Props> = ({
 }) => {
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [nameInput, setNameInput] = useState('');
-  const [pendingAction, setPendingAction] = useState<null | (() => void)>(null);
 
   const openModal = (mode: ModalMode, initial = '') => {
     setNameInput(initial);
@@ -55,36 +56,10 @@ const ScriptManager: React.FC<Props> = ({
   const submitModal = () => {
     const trimmed = nameInput.trim();
     if (!trimmed) return;
-    if (modalMode === 'create') guardDirty(() => onCreate(trimmed));
+    if (modalMode === 'create') onCreate(trimmed);
     else if (modalMode === 'rename' && activeId) onRename(activeId, trimmed);
     else if (modalMode === 'saveAs') onSaveAs(trimmed);
     closeModal();
-  };
-
-  const guardDirty = (action: () => void) => {
-    if (isDirty) {
-      setPendingAction(() => action);
-    } else {
-      action();
-    }
-  };
-
-  const confirmPending = (discard: boolean) => {
-    const action = pendingAction;
-    setPendingAction(null);
-    if (!action) return;
-    if (discard) {
-      onDiscard();
-      action();
-    } else {
-      if (onSave) onSave();
-      action();
-    }
-  };
-
-  const handleSelectChange = (id: string) => {
-    if (id === activeId) return;
-    guardDirty(() => onOpen(id));
   };
 
   const modalTitle =
@@ -111,6 +86,12 @@ const ScriptManager: React.FC<Props> = ({
       label: 'Duplicate',
       onClick: () => onDuplicate(activeScript.data_id),
     },
+    ...(activeDirty ? [{
+      key: 'discard',
+      icon: <DeleteOutlined />,
+      label: 'Discard unsaved changes',
+      onClick: () => onDiscard(activeScript.data_id),
+    }] : []),
     { type: 'divider' as const },
     {
       key: 'delete',
@@ -118,7 +99,7 @@ const ScriptManager: React.FC<Props> = ({
       label: (
         <Popconfirm
           title="Delete this script?"
-          description={dirtyIds.has(activeScript.data_id) ? "You have unsaved changes. Delete anyway?" : "This can't be undone."}
+          description={activeDirty ? "You have unsaved changes. Delete anyway?" : "This can't be undone."}
           okText="Delete"
           okButtonProps={{ danger: true }}
           cancelText="Cancel"
@@ -143,19 +124,24 @@ const ScriptManager: React.FC<Props> = ({
     ),
   }));
 
+  const dirtyCount = dirtyIds.size;
+  const saveLabel = !isDirty
+    ? 'Saved'
+    : dirtyCount > 1 ? `Save ${dirtyCount}` : 'Save';
+
   return (
     <>
       <Space.Compact style={{ display: 'flex', alignItems: 'center' }}>
         <Select
           style={{ minWidth: 200, maxWidth: 280 }}
           value={activeId ?? undefined}
-          onChange={handleSelectChange}
+          onChange={onOpen}
           placeholder="No script open"
           options={selectOptions}
           notFoundContent={<Text type="secondary">No scripts yet</Text>}
         />
         <Tooltip title="New script">
-          <Button icon={<PlusOutlined />} onClick={() => guardDirty(() => openModal('create', ''))} />
+          <Button icon={<PlusOutlined />} onClick={() => openModal('create', '')} />
         </Tooltip>
         {activeScript && (
           <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
@@ -165,7 +151,7 @@ const ScriptManager: React.FC<Props> = ({
       </Space.Compact>
 
       {activeScript && (
-        <Tooltip title={isDirty ? 'Save changes' : 'No unsaved changes'}>
+        <Tooltip title={isDirty ? (dirtyCount > 1 ? `Save ${dirtyCount} scripts` : 'Save changes') : 'No unsaved changes'}>
           <Button
             type={isDirty ? 'primary' : 'default'}
             icon={isDirty ? <SaveOutlined /> : <CheckOutlined />}
@@ -173,7 +159,7 @@ const ScriptManager: React.FC<Props> = ({
             disabled={!isDirty}
             style={{ marginLeft: 8 }}
           >
-            {isDirty ? 'Save' : 'Saved'}
+            {saveLabel}
           </Button>
         </Tooltip>
       )}
@@ -200,19 +186,6 @@ const ScriptManager: React.FC<Props> = ({
             />
           </Form.Item>
         </Form>
-      </Modal>
-
-      <Modal
-        title="Unsaved changes"
-        open={pendingAction !== null}
-        onCancel={() => setPendingAction(null)}
-        footer={[
-          <Button key="cancel" onClick={() => setPendingAction(null)}>Cancel</Button>,
-          <Button key="discard" danger onClick={() => confirmPending(true)}>Discard</Button>,
-          <Button key="save" type="primary" onClick={() => confirmPending(false)}>Save and continue</Button>,
-        ]}
-      >
-        <p>You have unsaved changes in "{activeScript?.name}". What do you want to do?</p>
       </Modal>
     </>
   );

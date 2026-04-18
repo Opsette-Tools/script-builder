@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ConfigProvider, theme, Layout, Typography, Switch, Space, Row, Col, Segmented, Select, Modal, Alert, Grid } from 'antd';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ConfigProvider, theme, Layout, Typography, Switch, Space, Row, Col, Segmented, Select, Modal, Alert, Grid, message } from 'antd';
 import { BulbOutlined, BulbFilled } from '@ant-design/icons';
 import ScriptBuilder from './components/ScriptBuilder';
 import ScriptPreview from './components/ScriptPreview';
@@ -31,12 +31,14 @@ const App: React.FC = () => {
     activeScript,
     data,
     isDirty,
+    activeDirty,
     dirtyIds,
+    bridgeActive,
     updateField,
     updateSection,
     replaceAll,
     clearActive,
-    saveActive,
+    saveAll,
     discardDraft,
     createScript,
     openScript,
@@ -46,16 +48,30 @@ const App: React.FC = () => {
     deleteScript,
   } = useScripts();
 
+  const [messageApi, messageHolder] = message.useMessage();
+
+  const handleSave = useCallback(async () => {
+    const result = await saveAll();
+    if (result.savedCount === 0 && result.errors.length === 0) return;
+    if (result.ok) {
+      messageApi.success(result.savedCount === 1 ? 'Saved' : `Saved ${result.savedCount} scripts`);
+    } else if (result.savedCount > 0) {
+      messageApi.warning(`Saved ${result.savedCount}, ${result.errors.length} failed. Try again.`);
+    } else {
+      messageApi.error("Couldn't save. Try again in a moment.");
+    }
+  }, [saveAll, messageApi]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const isSave = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's';
       if (!isSave) return;
       e.preventDefault();
-      if (isDirty) saveActive();
+      if (isDirty) handleSave();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isDirty, saveActive]);
+  }, [isDirty, handleSave]);
 
   useEffect(() => {
     try { localStorage.setItem(DARK_KEY, String(dark)); } catch {}
@@ -72,6 +88,7 @@ const App: React.FC = () => {
         },
       }}
     >
+      {messageHolder}
       <Layout style={{ minHeight: '100vh', background: dark ? '#141414' : '#f5f5f5' }}>
         <Header
           className="no-print"
@@ -97,6 +114,7 @@ const App: React.FC = () => {
               activeId={activeId}
               activeScript={activeScript}
               isDirty={isDirty}
+              activeDirty={activeDirty}
               dirtyIds={dirtyIds}
               onOpen={openScript}
               onCreate={createScript}
@@ -104,7 +122,7 @@ const App: React.FC = () => {
               onSaveAs={saveAs}
               onDuplicate={duplicateScript}
               onDelete={deleteScript}
-              onSave={saveActive}
+              onSave={handleSave}
               onDiscard={discardDraft}
             />
           </div>
@@ -162,12 +180,20 @@ const App: React.FC = () => {
           </div>
           <Row gutter={[24, 24]}>
             <Col xs={24} lg={12}>
-              {(data.reasonForCall.why || data.problem.mainPain || data.valueProp.pitch || data.cta.line) && (
+              {activeDirty ? (
                 <Alert
                   className="no-print"
                   type="warning"
                   showIcon
-                  message="You have a draft in progress. Loading a new starter above will overwrite the fields below (your name, company, and referrer will be kept)."
+                  message="Unsaved changes — only stored on this device until you click Save."
+                  style={{ fontSize: 12, padding: '6px 12px', marginBottom: 12 }}
+                />
+              ) : (data.reasonForCall.why || data.problem.mainPain || data.valueProp.pitch || data.cta.line) && (
+                <Alert
+                  className="no-print"
+                  type="info"
+                  showIcon
+                  message="Loading a new starter above will overwrite the fields below (your name, company, and referrer will be kept)."
                   style={{ fontSize: 12, padding: '6px 12px', marginBottom: 12 }}
                 />
               )}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ScriptData, DEFAULT_SCRIPT_DATA, SavedScript } from '../types';
+import type { Bridge } from '../lib/bridge';
 
 const SCRIPTS_KEY = 'script-builder.scripts.v1';
 const DRAFTS_KEY = 'script-builder.drafts.v1';
@@ -36,7 +37,28 @@ function scriptsEqual(a: ScriptData, b: ScriptData): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function loadInitial(): { scripts: SavedScript[]; drafts: DraftMap; activeId: string | null } {
+function hydrateFromBridge(bridge: Bridge): { scripts: SavedScript[]; activeId: string | null } {
+  const scripts: SavedScript[] = [];
+  for (const item of bridge.init.items) {
+    const v = item.value as Partial<SavedScript> | null | undefined;
+    if (!v || typeof v !== 'object') continue;
+    const script = (v.script && typeof v.script === 'object')
+      ? { ...DEFAULT_SCRIPT_DATA, ...v.script }
+      : DEFAULT_SCRIPT_DATA;
+    scripts.push({
+      data_id: item.data_id,
+      type: 'script',
+      name: typeof v.name === 'string' && v.name.trim() ? v.name : 'Untitled Script',
+      createdAt: typeof v.createdAt === 'string' ? v.createdAt : nowIso(),
+      updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : nowIso(),
+      script,
+    });
+  }
+  const activeId = scripts[0]?.data_id ?? null;
+  return { scripts, activeId };
+}
+
+function loadFromLocalStorage(): { scripts: SavedScript[]; drafts: DraftMap; activeId: string | null } {
   let scripts: SavedScript[] = [];
 
   try {
@@ -81,15 +103,48 @@ function loadInitial(): { scripts: SavedScript[]; drafts: DraftMap; activeId: st
   return { scripts, drafts, activeId };
 }
 
+function getBridge(): Bridge | null {
+  if (typeof window === 'undefined') return null;
+  return window.__opsetteBridge ?? null;
+}
+
+export interface SaveAllResult {
+  ok: boolean;
+  savedCount: number;
+  errors: Error[];
+}
+
 export function useScripts() {
-  const initial = useMemo(loadInitial, []);
+  const bridge = useMemo(getBridge, []);
+
+  const initial = useMemo(() => {
+    if (bridge) {
+      const fromBridge = hydrateFromBridge(bridge);
+      let drafts: DraftMap = {};
+      try {
+        const raw = localStorage.getItem(DRAFTS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as DraftMap;
+          if (parsed && typeof parsed === 'object') {
+            for (const id of Object.keys(parsed)) {
+              if (fromBridge.scripts.some(s => s.data_id === id)) drafts[id] = parsed[id];
+            }
+          }
+        }
+      } catch {}
+      return { ...fromBridge, drafts };
+    }
+    return loadFromLocalStorage();
+  }, [bridge]);
+
   const [scripts, setScripts] = useState<SavedScript[]>(initial.scripts);
   const [drafts, setDrafts] = useState<DraftMap>(initial.drafts);
   const [activeId, setActiveId] = useState<string | null>(initial.activeId);
 
   useEffect(() => {
+    if (bridge) return;
     try { localStorage.setItem(SCRIPTS_KEY, JSON.stringify(scripts)); } catch {}
-  }, [scripts]);
+  }, [scripts, bridge]);
 
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
@@ -101,11 +156,12 @@ export function useScripts() {
   }, [drafts]);
 
   useEffect(() => {
+    if (bridge) return;
     try {
       if (activeId) localStorage.setItem(ACTIVE_KEY, activeId);
       else localStorage.removeItem(ACTIVE_KEY);
     } catch {}
-  }, [activeId]);
+  }, [activeId, bridge]);
 
   const persistedActive = useMemo(
     () => scripts.find(s => s.data_id === activeId) ?? null,
@@ -129,7 +185,8 @@ export function useScripts() {
     return set;
   }, [drafts, scripts]);
 
-  const isDirty = activeId ? dirtyIds.has(activeId) : false;
+  const isDirty = dirtyIds.size > 0;
+  const activeDirty = activeId ? dirtyIds.has(activeId) : false;
 
   const mutateDraft = useCallback((fn: (s: ScriptData) => ScriptData) => {
     if (!activeId) return;
@@ -176,31 +233,82 @@ export function useScripts() {
     });
   }, [activeId]);
 
-  const saveActive = useCallback((): boolean => {
-    if (!activeId) return false;
-    const draft = drafts[activeId];
-    if (!draft) return false;
-    setScripts(prev => prev.map(s =>
-      s.data_id === activeId
-        ? { ...s, script: draft, updatedAt: nowIso() }
-        : s
-    ));
-    setDrafts(prev => {
-      if (!(activeId in prev)) return prev;
-      const next = { ...prev };
-      delete next[activeId];
-      return next;
+  const scriptsRef = useRef(scripts);
+  scriptsRef.current = scripts;
+
+  const saveAll = useCallback(async (): Promise<SaveAllResult> => {
+    const currentDrafts = draftsRef.current;
+    const currentScripts = scriptsRef.current;
+    const dirtyEntries: Array<{ id: string; draft: ScriptData; script: SavedScript }> = [];
+    for (const id of Object.keys(currentDrafts)) {
+      const persisted = currentScripts.find(s => s.data_id === id);
+      if (persisted && !scriptsEqual(persisted.script, currentDrafts[id])) {
+        dirtyEntries.push({ id, draft: currentDrafts[id], script: persisted });
+      }
+    }
+
+    if (dirtyEntries.length === 0) {
+      return { ok: true, savedCount: 0, errors: [] };
+    }
+
+    const ts = nowIso();
+    const commitLocal = () => {
+      setScripts(prev => prev.map(s => {
+        const hit = dirtyEntries.find(e => e.id === s.data_id);
+        return hit ? { ...s, script: hit.draft, updatedAt: ts } : s;
+      }));
+      setDrafts(prev => {
+        const next = { ...prev };
+        for (const e of dirtyEntries) delete next[e.id];
+        return next;
+      });
+    };
+
+    if (!bridge) {
+      commitLocal();
+      return { ok: true, savedCount: dirtyEntries.length, errors: [] };
+    }
+
+    const results = await Promise.allSettled(dirtyEntries.map(e => {
+      const value: SavedScript = { ...e.script, script: e.draft, updatedAt: ts };
+      return bridge.save(e.id, value);
+    }));
+
+    const errors: Error[] = [];
+    const succeeded = new Set<string>();
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
+        succeeded.add(dirtyEntries[i].id);
+      } else {
+        errors.push(r.reason instanceof Error ? r.reason : new Error(String(r.reason)));
+      }
     });
-    return true;
-  }, [activeId, drafts]);
+
+    if (succeeded.size > 0) {
+      setScripts(prev => prev.map(s => {
+        const hit = dirtyEntries.find(e => e.id === s.data_id && succeeded.has(e.id));
+        return hit ? { ...s, script: hit.draft, updatedAt: ts } : s;
+      }));
+      setDrafts(prev => {
+        const next = { ...prev };
+        for (const id of succeeded) delete next[id];
+        return next;
+      });
+    }
+
+    return { ok: errors.length === 0, savedCount: succeeded.size, errors };
+  }, [bridge]);
 
   const createScript = useCallback((name: string, script?: ScriptData): string => {
     const trimmed = name.trim() || 'Untitled Script';
     const next = makeScript(trimmed, script ?? DEFAULT_SCRIPT_DATA);
     setScripts(prev => [...prev, next]);
     setActiveId(next.data_id);
+    if (bridge) {
+      bridge.save(next.data_id, next).catch(() => {});
+    }
     return next.data_id;
-  }, []);
+  }, [bridge]);
 
   const openScript = useCallback((id: string) => {
     setActiveId(id);
@@ -209,10 +317,16 @@ export function useScripts() {
   const renameScript = useCallback((id: string, name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    setScripts(prev => prev.map(s =>
-      s.data_id === id ? { ...s, name: trimmed, updatedAt: nowIso() } : s
-    ));
-  }, []);
+    let updated: SavedScript | undefined;
+    setScripts(prev => prev.map(s => {
+      if (s.data_id !== id) return s;
+      updated = { ...s, name: trimmed, updatedAt: nowIso() };
+      return updated;
+    }));
+    if (bridge && updated) {
+      bridge.save(id, updated).catch(() => {});
+    }
+  }, [bridge]);
 
   const duplicateScript = useCallback((id: string): string | null => {
     const src = scripts.find(s => s.data_id === id);
@@ -221,8 +335,11 @@ export function useScripts() {
     const copy = makeScript(`${src.name} (copy)`, sourceScript);
     setScripts(prev => [...prev, copy]);
     setActiveId(copy.data_id);
+    if (bridge) {
+      bridge.save(copy.data_id, copy).catch(() => {});
+    }
     return copy.data_id;
-  }, [scripts, drafts]);
+  }, [scripts, drafts, bridge]);
 
   const saveAs = useCallback((name: string): string | null => {
     if (!activeId) return null;
@@ -236,8 +353,11 @@ export function useScripts() {
       return next;
     });
     setActiveId(copy.data_id);
+    if (bridge) {
+      bridge.save(copy.data_id, copy).catch(() => {});
+    }
     return copy.data_id;
-  }, [activeId, drafts, persistedActive]);
+  }, [activeId, drafts, persistedActive, bridge]);
 
   const deleteScript = useCallback((id: string) => {
     setScripts(prev => {
@@ -253,7 +373,12 @@ export function useScripts() {
       delete next[id];
       return next;
     });
-  }, [activeId]);
+    if (bridge) {
+      bridge.delete(id).catch(() => {
+        // Optimistic UI already advanced; errors are logged by the bridge timeout handler.
+      });
+    }
+  }, [activeId, bridge]);
 
   return {
     scripts,
@@ -261,12 +386,14 @@ export function useScripts() {
     activeScript,
     data,
     isDirty,
+    activeDirty,
     dirtyIds,
+    bridgeActive: bridge !== null,
     updateField,
     updateSection,
     replaceAll,
     clearActive,
-    saveActive,
+    saveAll,
     discardDraft,
     createScript,
     openScript,
