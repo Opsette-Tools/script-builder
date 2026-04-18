@@ -30,10 +30,14 @@ const App: React.FC = () => {
     activeId,
     activeScript,
     data,
+    isDirty,
+    dirtyIds,
     updateField,
     updateSection,
     replaceAll,
     clearActive,
+    saveActive,
+    discardDraft,
     createScript,
     openScript,
     renameScript,
@@ -41,6 +45,17 @@ const App: React.FC = () => {
     duplicateScript,
     deleteScript,
   } = useScripts();
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isSave = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's';
+      if (!isSave) return;
+      e.preventDefault();
+      if (isDirty) saveActive();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isDirty, saveActive]);
 
   useEffect(() => {
     try { localStorage.setItem(DARK_KEY, String(dark)); } catch {}
@@ -81,12 +96,16 @@ const App: React.FC = () => {
               scripts={scripts}
               activeId={activeId}
               activeScript={activeScript}
+              isDirty={isDirty}
+              dirtyIds={dirtyIds}
               onOpen={openScript}
               onCreate={createScript}
               onRename={renameScript}
               onSaveAs={saveAs}
               onDuplicate={duplicateScript}
               onDelete={deleteScript}
+              onSave={saveActive}
+              onDiscard={discardDraft}
             />
           </div>
           {!isMobile && (

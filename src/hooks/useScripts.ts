@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ScriptData, DEFAULT_SCRIPT_DATA, SavedScript } from '../types';
 
 const SCRIPTS_KEY = 'script-builder.scripts.v1';
+const DRAFTS_KEY = 'script-builder.drafts.v1';
 const ACTIVE_KEY = 'script-builder.activeId.v1';
 const LEGACY_KEY = 'cold-call-script-data';
+
+type DraftMap = Record<string, ScriptData>;
 
 function newId(): string {
   try {
@@ -29,44 +32,73 @@ function makeScript(name: string, script: ScriptData = DEFAULT_SCRIPT_DATA): Sav
   };
 }
 
-function loadInitial(): { scripts: SavedScript[]; activeId: string | null } {
+function scriptsEqual(a: ScriptData, b: ScriptData): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function loadInitial(): { scripts: SavedScript[]; drafts: DraftMap; activeId: string | null } {
+  let scripts: SavedScript[] = [];
+
   try {
     const raw = localStorage.getItem(SCRIPTS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as SavedScript[];
-      if (Array.isArray(parsed)) {
-        const activeId = localStorage.getItem(ACTIVE_KEY);
-        const validActive = activeId && parsed.some(s => s.data_id === activeId)
-          ? activeId
-          : parsed[0]?.data_id ?? null;
-        return { scripts: parsed, activeId: validActive };
+      if (Array.isArray(parsed)) scripts = parsed;
+    }
+  } catch {}
+
+  if (scripts.length === 0) {
+    try {
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if (legacy) {
+        const parsed = JSON.parse(legacy);
+        const migrated = makeScript('My Script', { ...DEFAULT_SCRIPT_DATA, ...parsed });
+        scripts = [migrated];
+        localStorage.removeItem(LEGACY_KEY);
+        try { localStorage.setItem(SCRIPTS_KEY, JSON.stringify(scripts)); } catch {}
+      }
+    } catch {}
+  }
+
+  let drafts: DraftMap = {};
+  try {
+    const raw = localStorage.getItem(DRAFTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as DraftMap;
+      if (parsed && typeof parsed === 'object') {
+        for (const id of Object.keys(parsed)) {
+          if (scripts.some(s => s.data_id === id)) drafts[id] = parsed[id];
+        }
       }
     }
   } catch {}
 
-  try {
-    const legacy = localStorage.getItem(LEGACY_KEY);
-    if (legacy) {
-      const parsed = JSON.parse(legacy);
-      const migrated = makeScript('My Script', { ...DEFAULT_SCRIPT_DATA, ...parsed });
-      localStorage.removeItem(LEGACY_KEY);
-      return { scripts: [migrated], activeId: migrated.data_id };
-    }
-  } catch {}
+  const storedActive = (() => { try { return localStorage.getItem(ACTIVE_KEY); } catch { return null; } })();
+  const activeId = storedActive && scripts.some(s => s.data_id === storedActive)
+    ? storedActive
+    : scripts[0]?.data_id ?? null;
 
-  return { scripts: [], activeId: null };
+  return { scripts, drafts, activeId };
 }
 
 export function useScripts() {
   const initial = useMemo(loadInitial, []);
   const [scripts, setScripts] = useState<SavedScript[]>(initial.scripts);
+  const [drafts, setDrafts] = useState<DraftMap>(initial.drafts);
   const [activeId, setActiveId] = useState<string | null>(initial.activeId);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(SCRIPTS_KEY, JSON.stringify(scripts));
-    } catch {}
+    try { localStorage.setItem(SCRIPTS_KEY, JSON.stringify(scripts)); } catch {}
   }, [scripts]);
+
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(draftsRef.current)); } catch {}
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [drafts]);
 
   useEffect(() => {
     try {
@@ -75,46 +107,92 @@ export function useScripts() {
     } catch {}
   }, [activeId]);
 
-  const activeScript = useMemo(
+  const persistedActive = useMemo(
     () => scripts.find(s => s.data_id === activeId) ?? null,
     [scripts, activeId]
   );
 
-  const data: ScriptData = activeScript?.script ?? DEFAULT_SCRIPT_DATA;
+  const activeScript = persistedActive;
 
-  const mutateActive = useCallback((fn: (s: ScriptData) => ScriptData) => {
-    setScripts(prev => prev.map(s =>
-      s.data_id === activeId
-        ? { ...s, script: fn(s.script), updatedAt: nowIso() }
-        : s
-    ));
-  }, [activeId]);
+  const data: ScriptData = useMemo(() => {
+    if (!activeId) return DEFAULT_SCRIPT_DATA;
+    if (drafts[activeId]) return drafts[activeId];
+    return persistedActive?.script ?? DEFAULT_SCRIPT_DATA;
+  }, [activeId, drafts, persistedActive]);
+
+  const dirtyIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const id of Object.keys(drafts)) {
+      const persisted = scripts.find(s => s.data_id === id);
+      if (persisted && !scriptsEqual(persisted.script, drafts[id])) set.add(id);
+    }
+    return set;
+  }, [drafts, scripts]);
+
+  const isDirty = activeId ? dirtyIds.has(activeId) : false;
+
+  const mutateDraft = useCallback((fn: (s: ScriptData) => ScriptData) => {
+    if (!activeId) return;
+    setDrafts(prev => {
+      const current = prev[activeId] ?? scripts.find(s => s.data_id === activeId)?.script ?? DEFAULT_SCRIPT_DATA;
+      return { ...prev, [activeId]: fn(current) };
+    });
+  }, [activeId, scripts]);
 
   const updateSection = useCallback(<K extends keyof ScriptData>(
     section: K,
     value: ScriptData[K]
   ) => {
-    mutateActive(s => ({ ...s, [section]: value }));
-  }, [mutateActive]);
+    mutateDraft(s => ({ ...s, [section]: value }));
+  }, [mutateDraft]);
 
   const updateField = useCallback(<K extends keyof ScriptData>(
     section: K,
     field: string,
     value: string
   ) => {
-    mutateActive(s => ({
+    mutateDraft(s => ({
       ...s,
       [section]: { ...(s[section] as any), [field]: value },
     }));
-  }, [mutateActive]);
+  }, [mutateDraft]);
 
   const replaceAll = useCallback((next: ScriptData) => {
-    mutateActive(() => next);
-  }, [mutateActive]);
+    mutateDraft(() => next);
+  }, [mutateDraft]);
 
   const clearActive = useCallback(() => {
-    mutateActive(() => DEFAULT_SCRIPT_DATA);
-  }, [mutateActive]);
+    mutateDraft(() => DEFAULT_SCRIPT_DATA);
+  }, [mutateDraft]);
+
+  const discardDraft = useCallback((id?: string) => {
+    const target = id ?? activeId;
+    if (!target) return;
+    setDrafts(prev => {
+      if (!(target in prev)) return prev;
+      const next = { ...prev };
+      delete next[target];
+      return next;
+    });
+  }, [activeId]);
+
+  const saveActive = useCallback((): boolean => {
+    if (!activeId) return false;
+    const draft = drafts[activeId];
+    if (!draft) return false;
+    setScripts(prev => prev.map(s =>
+      s.data_id === activeId
+        ? { ...s, script: draft, updatedAt: nowIso() }
+        : s
+    ));
+    setDrafts(prev => {
+      if (!(activeId in prev)) return prev;
+      const next = { ...prev };
+      delete next[activeId];
+      return next;
+    });
+    return true;
+  }, [activeId, drafts]);
 
   const createScript = useCallback((name: string, script?: ScriptData): string => {
     const trimmed = name.trim() || 'Untitled Script';
@@ -139,19 +217,27 @@ export function useScripts() {
   const duplicateScript = useCallback((id: string): string | null => {
     const src = scripts.find(s => s.data_id === id);
     if (!src) return null;
-    const copy = makeScript(`${src.name} (copy)`, src.script);
+    const sourceScript = drafts[id] ?? src.script;
+    const copy = makeScript(`${src.name} (copy)`, sourceScript);
     setScripts(prev => [...prev, copy]);
     setActiveId(copy.data_id);
     return copy.data_id;
-  }, [scripts]);
+  }, [scripts, drafts]);
 
   const saveAs = useCallback((name: string): string | null => {
-    if (!activeScript) return null;
-    const copy = makeScript(name.trim() || 'Untitled Script', activeScript.script);
+    if (!activeId) return null;
+    const current = drafts[activeId] ?? persistedActive?.script ?? DEFAULT_SCRIPT_DATA;
+    const copy = makeScript(name.trim() || 'Untitled Script', current);
     setScripts(prev => [...prev, copy]);
+    setDrafts(prev => {
+      if (!activeId || !(activeId in prev)) return prev;
+      const next = { ...prev };
+      delete next[activeId];
+      return next;
+    });
     setActiveId(copy.data_id);
     return copy.data_id;
-  }, [activeScript]);
+  }, [activeId, drafts, persistedActive]);
 
   const deleteScript = useCallback((id: string) => {
     setScripts(prev => {
@@ -161,6 +247,12 @@ export function useScripts() {
       }
       return remaining;
     });
+    setDrafts(prev => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }, [activeId]);
 
   return {
@@ -168,10 +260,14 @@ export function useScripts() {
     activeId,
     activeScript,
     data,
+    isDirty,
+    dirtyIds,
     updateField,
     updateSection,
     replaceAll,
     clearActive,
+    saveActive,
+    discardDraft,
     createScript,
     openScript,
     renameScript,

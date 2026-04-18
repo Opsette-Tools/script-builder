@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Select, Button, Dropdown, Modal, Input, Form, Popconfirm, Typography, Space, Tooltip } from 'antd';
-import { PlusOutlined, MoreOutlined, EditOutlined, CopyOutlined, DeleteOutlined, SaveOutlined } from '@ant-design/icons';
+import { Select, Button, Dropdown, Modal, Input, Form, Popconfirm, Typography, Space, Tooltip, Badge } from 'antd';
+import { PlusOutlined, MoreOutlined, EditOutlined, CopyOutlined, DeleteOutlined, SaveOutlined, CheckOutlined } from '@ant-design/icons';
 import type { SavedScript } from '../types';
 
 const { Text } = Typography;
@@ -9,12 +9,16 @@ interface Props {
   scripts: SavedScript[];
   activeId: string | null;
   activeScript: SavedScript | null;
+  isDirty: boolean;
+  dirtyIds: Set<string>;
   onOpen: (id: string) => void;
   onCreate: (name: string) => void;
   onRename: (id: string, name: string) => void;
   onSaveAs: (name: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  onSave: () => void;
+  onDiscard: () => void;
 }
 
 type ModalMode = 'create' | 'rename' | 'saveAs' | null;
@@ -23,15 +27,20 @@ const ScriptManager: React.FC<Props> = ({
   scripts,
   activeId,
   activeScript,
+  isDirty,
+  dirtyIds,
   onOpen,
   onCreate,
   onRename,
   onSaveAs,
   onDuplicate,
   onDelete,
+  onSave,
+  onDiscard,
 }) => {
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [nameInput, setNameInput] = useState('');
+  const [pendingAction, setPendingAction] = useState<null | (() => void)>(null);
 
   const openModal = (mode: ModalMode, initial = '') => {
     setNameInput(initial);
@@ -46,10 +55,36 @@ const ScriptManager: React.FC<Props> = ({
   const submitModal = () => {
     const trimmed = nameInput.trim();
     if (!trimmed) return;
-    if (modalMode === 'create') onCreate(trimmed);
+    if (modalMode === 'create') guardDirty(() => onCreate(trimmed));
     else if (modalMode === 'rename' && activeId) onRename(activeId, trimmed);
     else if (modalMode === 'saveAs') onSaveAs(trimmed);
     closeModal();
+  };
+
+  const guardDirty = (action: () => void) => {
+    if (isDirty) {
+      setPendingAction(() => action);
+    } else {
+      action();
+    }
+  };
+
+  const confirmPending = (discard: boolean) => {
+    const action = pendingAction;
+    setPendingAction(null);
+    if (!action) return;
+    if (discard) {
+      onDiscard();
+      action();
+    } else {
+      if (onSave) onSave();
+      action();
+    }
+  };
+
+  const handleSelectChange = (id: string) => {
+    if (id === activeId) return;
+    guardDirty(() => onOpen(id));
   };
 
   const modalTitle =
@@ -83,7 +118,7 @@ const ScriptManager: React.FC<Props> = ({
       label: (
         <Popconfirm
           title="Delete this script?"
-          description="This can't be undone."
+          description={dirtyIds.has(activeScript.data_id) ? "You have unsaved changes. Delete anyway?" : "This can't be undone."}
           okText="Delete"
           okButtonProps={{ danger: true }}
           cancelText="Cancel"
@@ -96,19 +131,31 @@ const ScriptManager: React.FC<Props> = ({
     },
   ] : [];
 
+  const selectOptions = scripts.map(s => ({
+    value: s.data_id,
+    label: (
+      <span>
+        {s.name}
+        {dirtyIds.has(s.data_id) && (
+          <Badge color="#faad14" style={{ marginLeft: 8 }} />
+        )}
+      </span>
+    ),
+  }));
+
   return (
     <>
       <Space.Compact style={{ display: 'flex', alignItems: 'center' }}>
         <Select
           style={{ minWidth: 200, maxWidth: 280 }}
           value={activeId ?? undefined}
-          onChange={onOpen}
+          onChange={handleSelectChange}
           placeholder="No script open"
-          options={scripts.map(s => ({ value: s.data_id, label: s.name }))}
+          options={selectOptions}
           notFoundContent={<Text type="secondary">No scripts yet</Text>}
         />
         <Tooltip title="New script">
-          <Button icon={<PlusOutlined />} onClick={() => openModal('create', '')} />
+          <Button icon={<PlusOutlined />} onClick={() => guardDirty(() => openModal('create', ''))} />
         </Tooltip>
         {activeScript && (
           <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
@@ -116,6 +163,20 @@ const ScriptManager: React.FC<Props> = ({
           </Dropdown>
         )}
       </Space.Compact>
+
+      {activeScript && (
+        <Tooltip title={isDirty ? 'Save changes' : 'No unsaved changes'}>
+          <Button
+            type={isDirty ? 'primary' : 'default'}
+            icon={isDirty ? <SaveOutlined /> : <CheckOutlined />}
+            onClick={onSave}
+            disabled={!isDirty}
+            style={{ marginLeft: 8 }}
+          >
+            {isDirty ? 'Save' : 'Saved'}
+          </Button>
+        </Tooltip>
+      )}
 
       <Modal
         title={modalTitle}
@@ -139,6 +200,19 @@ const ScriptManager: React.FC<Props> = ({
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Unsaved changes"
+        open={pendingAction !== null}
+        onCancel={() => setPendingAction(null)}
+        footer={[
+          <Button key="cancel" onClick={() => setPendingAction(null)}>Cancel</Button>,
+          <Button key="discard" danger onClick={() => confirmPending(true)}>Discard</Button>,
+          <Button key="save" type="primary" onClick={() => confirmPending(false)}>Save and continue</Button>,
+        ]}
+      >
+        <p>You have unsaved changes in "{activeScript?.name}". What do you want to do?</p>
       </Modal>
     </>
   );
