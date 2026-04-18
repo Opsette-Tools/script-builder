@@ -7,6 +7,8 @@ const DRAFTS_KEY = 'script-builder.drafts.v1';
 const ACTIVE_KEY = 'script-builder.activeId.v1';
 const LEGACY_KEY = 'cold-call-script-data';
 const MIGRATED_KEY = 'script-builder.migrated';
+const UNSYNCED_KEY = 'script-builder.unsynced.v1';
+const UNSYNCED_RECORDS_KEY = 'script-builder.unsyncedRecords.v1';
 
 type DraftMap = Record<string, ScriptData>;
 
@@ -130,6 +132,55 @@ export function useScripts() {
   const initial = useMemo(() => {
     if (bridge) {
       const fromBridge = hydrateFromBridge(bridge);
+
+      let unsyncedIds: Set<string> = new Set();
+      try {
+        const raw = localStorage.getItem(UNSYNCED_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            for (const id of parsed) {
+              if (typeof id === 'string') unsyncedIds.add(id);
+            }
+          }
+        }
+      } catch {}
+
+      let unsyncedRecords: Record<string, SavedScript> = {};
+      try {
+        const raw = localStorage.getItem(UNSYNCED_RECORDS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            for (const id of Object.keys(parsed)) {
+              if (unsyncedIds.has(id) && parsed[id] && typeof parsed[id] === 'object') {
+                unsyncedRecords[id] = parsed[id] as SavedScript;
+              }
+            }
+          }
+        }
+      } catch {}
+
+      const overlay: SavedScript[] = fromBridge.scripts.map(s => {
+        if (unsyncedIds.has(s.data_id)) {
+          const rec = unsyncedRecords[s.data_id];
+          if (rec && rec.data_id === s.data_id) return rec;
+        }
+        return s;
+      });
+      const overlayIds = new Set(overlay.map(s => s.data_id));
+      for (const id of unsyncedIds) {
+        if (overlayIds.has(id)) continue;
+        const rec = unsyncedRecords[id];
+        if (rec && rec.data_id === id) overlay.push(rec);
+      }
+
+      const finalIds = new Set(overlay.map(s => s.data_id));
+      const prunedUnsynced = new Set<string>();
+      for (const id of unsyncedIds) {
+        if (finalIds.has(id)) prunedUnsynced.add(id);
+      }
+
       let drafts: DraftMap = {};
       try {
         const raw = localStorage.getItem(DRAFTS_KEY);
@@ -137,19 +188,44 @@ export function useScripts() {
           const parsed = JSON.parse(raw) as DraftMap;
           if (parsed && typeof parsed === 'object') {
             for (const id of Object.keys(parsed)) {
-              if (fromBridge.scripts.some(s => s.data_id === id)) drafts[id] = parsed[id];
+              if (finalIds.has(id)) drafts[id] = parsed[id];
             }
           }
         }
       } catch {}
-      return { ...fromBridge, drafts };
+
+      const activeId = fromBridge.activeId ?? overlay[0]?.data_id ?? null;
+      return { scripts: overlay, drafts, activeId, unsyncedIds: prunedUnsynced };
     }
-    return loadFromLocalStorage();
+    const fromLocal = loadFromLocalStorage();
+    return { ...fromLocal, unsyncedIds: new Set<string>() };
   }, [bridge]);
 
   const [scripts, setScripts] = useState<SavedScript[]>(initial.scripts);
   const [drafts, setDrafts] = useState<DraftMap>(initial.drafts);
   const [activeId, setActiveId] = useState<string | null>(initial.activeId);
+  const [unsyncedIds, setUnsyncedIds] = useState<Set<string>>(initial.unsyncedIds);
+
+  const markUnsynced = useCallback((id: string) => {
+    if (!bridge) return;
+    setUnsyncedIds(prev => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, [bridge]);
+
+  const clearUnsynced = useCallback((ids: string[]) => {
+    setUnsyncedIds(prev => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (next.delete(id)) changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, []);
 
   useEffect(() => {
     if (bridge) return;
@@ -173,6 +249,19 @@ export function useScripts() {
     } catch {}
   }, [activeId, bridge]);
 
+  useEffect(() => {
+    if (!bridge) return;
+    try {
+      localStorage.setItem(UNSYNCED_KEY, JSON.stringify(Array.from(unsyncedIds)));
+      const records: Record<string, SavedScript> = {};
+      for (const id of unsyncedIds) {
+        const s = scripts.find(x => x.data_id === id);
+        if (s) records[id] = s;
+      }
+      localStorage.setItem(UNSYNCED_RECORDS_KEY, JSON.stringify(records));
+    } catch {}
+  }, [unsyncedIds, scripts, bridge]);
+
   const persistedActive = useMemo(
     () => scripts.find(s => s.data_id === activeId) ?? null,
     [scripts, activeId]
@@ -192,8 +281,11 @@ export function useScripts() {
       const persisted = scripts.find(s => s.data_id === id);
       if (persisted && !scriptsEqual(persisted.script, drafts[id])) set.add(id);
     }
+    for (const id of unsyncedIds) {
+      if (scripts.some(s => s.data_id === id)) set.add(id);
+    }
     return set;
-  }, [drafts, scripts]);
+  }, [drafts, scripts, unsyncedIds]);
 
   const isDirty = dirtyIds.size > 0;
   const activeDirty = activeId ? dirtyIds.has(activeId) : false;
@@ -246,49 +338,66 @@ export function useScripts() {
   const scriptsRef = useRef(scripts);
   scriptsRef.current = scripts;
 
+  const unsyncedRef = useRef(unsyncedIds);
+  unsyncedRef.current = unsyncedIds;
+
   const saveAll = useCallback(async (): Promise<SaveAllResult> => {
     const currentDrafts = draftsRef.current;
     const currentScripts = scriptsRef.current;
-    const dirtyEntries: Array<{ id: string; draft: ScriptData; script: SavedScript }> = [];
+    const currentUnsynced = unsyncedRef.current;
+
+    type Entry = { id: string; script: SavedScript; draft?: ScriptData };
+    const entries: Entry[] = [];
+    const seen = new Set<string>();
+
     for (const id of Object.keys(currentDrafts)) {
       const persisted = currentScripts.find(s => s.data_id === id);
       if (persisted && !scriptsEqual(persisted.script, currentDrafts[id])) {
-        dirtyEntries.push({ id, draft: currentDrafts[id], script: persisted });
+        entries.push({ id, script: persisted, draft: currentDrafts[id] });
+        seen.add(id);
       }
     }
 
-    if (dirtyEntries.length === 0) {
+    for (const id of currentUnsynced) {
+      if (seen.has(id)) continue;
+      const persisted = currentScripts.find(s => s.data_id === id);
+      if (persisted) {
+        entries.push({ id, script: persisted });
+        seen.add(id);
+      }
+    }
+
+    if (entries.length === 0) {
       return { ok: true, savedCount: 0, errors: [] };
     }
 
     const ts = nowIso();
-    const commitLocal = () => {
+
+    if (!bridge) {
       setScripts(prev => prev.map(s => {
-        const hit = dirtyEntries.find(e => e.id === s.data_id);
-        return hit ? { ...s, script: hit.draft, updatedAt: ts } : s;
+        const hit = entries.find(e => e.id === s.data_id && e.draft);
+        return hit && hit.draft ? { ...s, script: hit.draft, updatedAt: ts } : s;
       }));
       setDrafts(prev => {
         const next = { ...prev };
-        for (const e of dirtyEntries) delete next[e.id];
+        for (const e of entries) if (e.draft) delete next[e.id];
         return next;
       });
-    };
-
-    if (!bridge) {
-      commitLocal();
-      return { ok: true, savedCount: dirtyEntries.length, errors: [] };
+      return { ok: true, savedCount: entries.length, errors: [] };
     }
 
-    const results = await Promise.allSettled(dirtyEntries.map(e => {
-      const value: SavedScript = { ...e.script, script: e.draft, updatedAt: ts };
-      return bridge.save(e.id, toWire(value));
+    const results = await Promise.allSettled(entries.map(e => {
+      const value: SavedScript = e.draft
+        ? { ...e.script, script: e.draft, updatedAt: ts }
+        : e.script;
+      return bridge.save(e.id, toWire(value)).then(() => value);
     }));
 
     const errors: Error[] = [];
-    const succeeded = new Set<string>();
+    const succeeded = new Map<string, SavedScript>();
     results.forEach((r, i) => {
       if (r.status === 'fulfilled') {
-        succeeded.add(dirtyEntries[i].id);
+        succeeded.set(entries[i].id, r.value);
       } else {
         errors.push(r.reason instanceof Error ? r.reason : new Error(String(r.reason)));
       }
@@ -296,29 +405,28 @@ export function useScripts() {
 
     if (succeeded.size > 0) {
       setScripts(prev => prev.map(s => {
-        const hit = dirtyEntries.find(e => e.id === s.data_id && succeeded.has(e.id));
-        return hit ? { ...s, script: hit.draft, updatedAt: ts } : s;
+        const saved = succeeded.get(s.data_id);
+        return saved ? saved : s;
       }));
       setDrafts(prev => {
         const next = { ...prev };
-        for (const id of succeeded) delete next[id];
+        for (const id of succeeded.keys()) delete next[id];
         return next;
       });
+      clearUnsynced(Array.from(succeeded.keys()));
     }
 
     return { ok: errors.length === 0, savedCount: succeeded.size, errors };
-  }, [bridge]);
+  }, [bridge, clearUnsynced]);
 
   const createScript = useCallback((name: string, script?: ScriptData): string => {
     const trimmed = name.trim() || 'Untitled Script';
     const next = makeScript(trimmed, script ?? DEFAULT_SCRIPT_DATA);
     setScripts(prev => [...prev, next]);
     setActiveId(next.data_id);
-    if (bridge) {
-      bridge.save(next.data_id, toWire(next)).catch(() => {});
-    }
+    markUnsynced(next.data_id);
     return next.data_id;
-  }, [bridge]);
+  }, [markUnsynced]);
 
   const openScript = useCallback((id: string) => {
     setActiveId(id);
@@ -327,16 +435,11 @@ export function useScripts() {
   const renameScript = useCallback((id: string, name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    let updated: SavedScript | undefined;
-    setScripts(prev => prev.map(s => {
-      if (s.data_id !== id) return s;
-      updated = { ...s, name: trimmed, updatedAt: nowIso() };
-      return updated;
-    }));
-    if (bridge && updated) {
-      bridge.save(id, toWire(updated)).catch(() => {});
-    }
-  }, [bridge]);
+    setScripts(prev => prev.map(s =>
+      s.data_id === id ? { ...s, name: trimmed, updatedAt: nowIso() } : s
+    ));
+    markUnsynced(id);
+  }, [markUnsynced]);
 
   const duplicateScript = useCallback((id: string): string | null => {
     const src = scripts.find(s => s.data_id === id);
@@ -345,11 +448,9 @@ export function useScripts() {
     const copy = makeScript(`${src.name} (copy)`, sourceScript);
     setScripts(prev => [...prev, copy]);
     setActiveId(copy.data_id);
-    if (bridge) {
-      bridge.save(copy.data_id, toWire(copy)).catch(() => {});
-    }
+    markUnsynced(copy.data_id);
     return copy.data_id;
-  }, [scripts, drafts, bridge]);
+  }, [scripts, drafts, markUnsynced]);
 
   const saveAs = useCallback((name: string): string | null => {
     if (!activeId) return null;
@@ -363,13 +464,12 @@ export function useScripts() {
       return next;
     });
     setActiveId(copy.data_id);
-    if (bridge) {
-      bridge.save(copy.data_id, toWire(copy)).catch(() => {});
-    }
+    markUnsynced(copy.data_id);
     return copy.data_id;
-  }, [activeId, drafts, persistedActive, bridge]);
+  }, [activeId, drafts, persistedActive, markUnsynced]);
 
   const deleteScript = useCallback((id: string) => {
+    const wasUnsynced = unsyncedRef.current.has(id);
     setScripts(prev => {
       const remaining = prev.filter(s => s.data_id !== id);
       if (id === activeId) {
@@ -383,12 +483,13 @@ export function useScripts() {
       delete next[id];
       return next;
     });
-    if (bridge) {
+    clearUnsynced([id]);
+    if (bridge && !wasUnsynced) {
       bridge.delete(id).catch(() => {
         // Optimistic UI already advanced; errors are logged by the bridge timeout handler.
       });
     }
-  }, [activeId, bridge]);
+  }, [activeId, bridge, clearUnsynced]);
 
   return {
     scripts,
