@@ -1,10 +1,8 @@
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
+import { connectBridge, type Bridge } from './lib/bridge';
 
-// When rendered inside an iframe, unregister any existing service worker so
-// the host page isn't subject to our cached shell. A standalone load keeps
-// the PWA service worker active.
 const isInIframe = (() => {
   try {
     return window.self !== window.top;
@@ -19,4 +17,15 @@ if (isInIframe) {
   });
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+// Expose the resolved bridge on window for Phase B — the hook will read it
+// on mount. Phase A wires up connectBridge but doesn't change app behavior.
+declare global {
+  interface Window {
+    __opsetteBridge?: Bridge | null;
+  }
+}
+
+connectBridge().then((bridge) => {
+  window.__opsetteBridge = bridge;
+  createRoot(document.getElementById('root')!).render(<App />);
+});
