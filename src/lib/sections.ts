@@ -7,6 +7,27 @@ import {
   CustomSection,
 } from '../types';
 
+export type SectionShape = 'single' | 'multi' | 'branches';
+
+export const SHAPE_LABEL: Record<SectionShape, string> = {
+  single: 'Single',
+  multi: 'Multi',
+  branches: 'Branches',
+};
+
+const BUILTIN_SHAPES: Record<BuiltinSectionKey, SectionShape> = {
+  opener: 'multi',
+  permissionAsk: 'single',
+  qualifyingQuestion: 'multi',
+  reasonForCall: 'single',
+  problem: 'single',
+  agitate: 'single',
+  valueProp: 'single',
+  cta: 'single',
+  objections: 'branches',
+  close: 'multi',
+};
+
 export interface SectionListEntry {
   id: SectionId;
   isCustom: boolean;
@@ -15,6 +36,7 @@ export interface SectionListEntry {
   label: string;
   number: number;
   hidden: boolean;
+  shape: SectionShape;
 }
 
 const BUILTIN_LABELS: Record<BuiltinSectionKey, string> = {
@@ -110,6 +132,7 @@ export function getSectionList(data: ScriptData): SectionListEntry[] {
         label: builtinLabel(key, style),
         number,
         hidden: isHidden,
+        shape: BUILTIN_SHAPES[key],
       });
       continue;
     }
@@ -130,6 +153,7 @@ export function getSectionList(data: ScriptData): SectionListEntry[] {
       label: custom.label || 'Custom Section',
       number,
       hidden: isHidden,
+      shape: custom.kind === 'branch' ? 'branches' : 'single',
     });
   }
 

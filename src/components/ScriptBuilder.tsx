@@ -57,8 +57,23 @@ import {
   CLOSE_YES_PRESETS,
   CLOSE_NO_PRESETS,
 } from '../types';
-import { getSectionList, SectionListEntry } from '../lib/sections';
+import { getSectionList, SectionListEntry, SectionShape, SHAPE_LABEL } from '../lib/sections';
 import ObjectionCards from './ObjectionCards';
+
+const SHAPE_COLOR: Record<SectionShape, string> = {
+  single: 'default',
+  multi: 'cyan',
+  branches: 'purple',
+};
+
+const SubGroup: React.FC<{ label: string; children: React.ReactNode; first?: boolean }> = ({ label, children, first }) => (
+  <div style={{ marginTop: first ? 0 : 12, paddingTop: first ? 0 : 12, borderTop: first ? 'none' : '1px dashed rgba(0,0,0,0.08)' }}>
+    <Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.2, opacity: 0.65, display: 'block', marginBottom: 6 }}>
+      {label}
+    </Text>
+    {children}
+  </div>
+);
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -111,34 +126,38 @@ function renderBuiltinEditor(
     case 'opener': {
       const isReferral = data.scriptStyle === 'referral';
       return (
-        <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>Your name</Text>
-            <Input
-              placeholder="John Smith"
-              value={data.opener.yourName}
-              onChange={e => updateField('opener', 'yourName', e.target.value)}
-            />
-          </div>
-          <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>Your company</Text>
-            <Input
-              placeholder="Acme Solutions"
-              value={data.opener.businessName}
-              onChange={e => updateField('opener', 'businessName', e.target.value)}
-            />
-          </div>
-          {isReferral && (
-            <div>
-              <Text type="secondary" style={{ fontSize: 12 }}>Who referred you?</Text>
-              <Input
-                placeholder='e.g. "Mike Johnson" or "Sarah at ABC Plumbing"'
-                value={data.opener.referrerName}
-                onChange={e => updateField('opener', 'referrerName', e.target.value)}
-              />
-            </div>
-          )}
-          <div>
+        <>
+          <SubGroup label="Identity" first>
+            <Space direction="vertical" style={{ width: '100%' }} size="small">
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>Your name</Text>
+                <Input
+                  placeholder="John Smith"
+                  value={data.opener.yourName}
+                  onChange={e => updateField('opener', 'yourName', e.target.value)}
+                />
+              </div>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>Your company</Text>
+                <Input
+                  placeholder="Acme Solutions"
+                  value={data.opener.businessName}
+                  onChange={e => updateField('opener', 'businessName', e.target.value)}
+                />
+              </div>
+              {isReferral && (
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Who referred you?</Text>
+                  <Input
+                    placeholder='e.g. "Mike Johnson" or "Sarah at ABC Plumbing"'
+                    value={data.opener.referrerName}
+                    onChange={e => updateField('opener', 'referrerName', e.target.value)}
+                  />
+                </div>
+              )}
+            </Space>
+          </SubGroup>
+          <SubGroup label="Tone">
             <Text type="secondary" style={{ fontSize: 12 }}>Greeting tone</Text>
             <Select
               style={{ width: '100%' }}
@@ -146,8 +165,8 @@ function renderBuiltinEditor(
               onChange={v => updateField('opener', 'greetingStyle', v)}
               options={GREETING_STYLES}
             />
-          </div>
-        </Space>
+          </SubGroup>
+        </>
       );
     }
     case 'permissionAsk':
@@ -168,9 +187,8 @@ function renderBuiltinEditor(
         updateSection('qualifyingQuestion', { ...data.qualifyingQuestion, extra: next });
       };
       return (
-        <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>Lead question</Text>
+        <>
+          <SubGroup label="Lead question" first>
             <QuickFill presets={QUESTION_PRESETS} onSelect={u('qualifyingQuestion', 'primary')} />
             <TextArea
               rows={2}
@@ -178,35 +196,40 @@ function renderBuiltinEditor(
               value={data.qualifyingQuestion.primary}
               onChange={e => updateField('qualifyingQuestion', 'primary', e.target.value)}
             />
-          </div>
-          {extras.map((q, idx) => (
-            <div key={idx}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>Follow-up #{idx + 1}</Text>
-                <Button
-                  size="small"
-                  type="text"
-                  icon={<DeleteOutlined />}
-                  onClick={() => setExtras(extras.filter((_, i) => i !== idx))}
-                />
-              </div>
-              <TextArea
-                rows={2}
-                placeholder='Layer in another question to dig deeper.'
-                value={q}
-                onChange={e => setExtras(extras.map((v, i) => (i === idx ? e.target.value : v)))}
-              />
-            </div>
-          ))}
-          <Button
-            size="small"
-            type="dashed"
-            icon={<PlusOutlined />}
-            onClick={() => setExtras([...extras, ''])}
-          >
-            Add follow-up question
-          </Button>
-        </Space>
+          </SubGroup>
+          <SubGroup label={extras.length === 0 ? 'Follow-ups (optional)' : `Follow-ups (${extras.length})`}>
+            <Space direction="vertical" style={{ width: '100%' }} size="small">
+              {extras.map((q, idx) => (
+                <div key={idx}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>Follow-up #{idx + 1}</Text>
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<DeleteOutlined />}
+                      onClick={() => setExtras(extras.filter((_, i) => i !== idx))}
+                    />
+                  </div>
+                  <TextArea
+                    rows={2}
+                    placeholder='Layer in another question to dig deeper.'
+                    value={q}
+                    onChange={e => setExtras(extras.map((v, i) => (i === idx ? e.target.value : v)))}
+                  />
+                </div>
+              ))}
+              <Button
+                size="small"
+                type="dashed"
+                icon={<PlusOutlined />}
+                onClick={() => setExtras([...extras, ''])}
+                block
+              >
+                Add follow-up question
+              </Button>
+            </Space>
+          </SubGroup>
+        </>
       );
     }
     case 'reasonForCall':
@@ -278,9 +301,8 @@ function renderBuiltinEditor(
       );
     case 'close':
       return (
-        <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>If they say yes</Text>
+        <>
+          <SubGroup label="If they say yes" first>
             <QuickFill presets={CLOSE_YES_PRESETS} onSelect={u('close', 'positive')} />
             <TextArea
               rows={2}
@@ -288,9 +310,8 @@ function renderBuiltinEditor(
               value={data.close.positive}
               onChange={e => updateField('close', 'positive', e.target.value)}
             />
-          </div>
-          <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>If they say no</Text>
+          </SubGroup>
+          <SubGroup label="If they say no">
             <QuickFill presets={CLOSE_NO_PRESETS} onSelect={u('close', 'neutral')} />
             <TextArea
               rows={2}
@@ -298,8 +319,8 @@ function renderBuiltinEditor(
               value={data.close.neutral}
               onChange={e => updateField('close', 'neutral', e.target.value)}
             />
-          </div>
-        </Space>
+          </SubGroup>
+        </>
       );
   }
 }
@@ -442,11 +463,27 @@ const SortablePanel: React.FC<PanelProps> = ({
         <Tag color={entry.hidden ? 'default' : 'blue'} style={{ marginInlineEnd: 0, minWidth: 28, textAlign: 'center' }}>
           {entry.hidden ? '—' : entry.number}
         </Tag>
-        <Text strong style={{ flex: 1, opacity: entry.hidden ? 0.55 : 1 }}>
-          {entry.label}
+        <Text strong style={{ flex: 1, opacity: entry.hidden ? 0.55 : 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {entry.label}
+          </span>
+          <Tooltip
+            title={
+              entry.shape === 'single' ? 'One field — write one line or paragraph.'
+                : entry.shape === 'multi' ? 'A few labeled fields grouped together.'
+                : 'A list of "if they / you say" branches.'
+            }
+          >
+            <Tag
+              color={SHAPE_COLOR[entry.shape]}
+              style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: '16px', padding: '0 6px' }}
+            >
+              {SHAPE_LABEL[entry.shape]}
+            </Tag>
+          </Tooltip>
           {entry.isCustom && (
-            <Tag color="purple" style={{ marginLeft: 8, fontSize: 11 }}>
-              {entry.custom?.kind === 'branch' ? 'Branches' : 'Custom'}
+            <Tag style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: '16px', padding: '0 6px' }} color="default">
+              Custom
             </Tag>
           )}
         </Text>
@@ -618,14 +655,24 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection, onCl
   const addMenuItems = [
     {
       key: 'free-text',
-      icon: <PlusOutlined />,
-      label: 'Free-text section',
+      icon: <Tag color={SHAPE_COLOR.single} style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: '16px', padding: '0 6px' }}>{SHAPE_LABEL.single}</Tag>,
+      label: (
+        <span>
+          <span style={{ fontWeight: 500 }}>Single</span>
+          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>One field — what you say</Text>
+        </span>
+      ),
       onClick: () => { setCreateKind('free-text'); setCreateLabel(''); },
     },
     {
       key: 'branch',
-      icon: <PlusOutlined />,
-      label: 'Branch tree (if/then)',
+      icon: <Tag color={SHAPE_COLOR.branches} style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: '16px', padding: '0 6px' }}>{SHAPE_LABEL.branches}</Tag>,
+      label: (
+        <span>
+          <span style={{ fontWeight: 500 }}>Branches</span>
+          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>List of "if they / you say" pairs</Text>
+        </span>
+      ),
       onClick: () => { setCreateKind('branch'); setCreateLabel(''); },
     },
   ];
@@ -755,7 +802,7 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection, onCl
       </div>
 
       <Modal
-        title={createKind === 'branch' ? 'New branch tree section' : 'New free-text section'}
+        title={createKind === 'branch' ? 'New Branches section' : 'New Single section'}
         open={createKind !== null}
         onCancel={() => { setCreateKind(null); setCreateLabel(''); }}
         onOk={submitCreate}
@@ -766,7 +813,7 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection, onCl
         <Form layout="vertical">
           <Form.Item label="Section name" help={
             createKind === 'branch'
-              ? 'e.g. "Branches: pricing / rushed / language"'
+              ? 'e.g. "Off-ramp branches", "Pricing / rushed / language"'
               : 'e.g. "Anchor observation", "Soft transition", "Exit line"'
           }>
             <Input
@@ -774,7 +821,7 @@ const ScriptBuilder: React.FC<Props> = ({ data, updateField, updateSection, onCl
               value={createLabel}
               onChange={e => setCreateLabel(e.target.value)}
               onPressEnter={submitCreate}
-              placeholder={createKind === 'branch' ? 'Branches' : 'Anchor observation'}
+              placeholder={createKind === 'branch' ? 'Off-ramp branches' : 'Anchor observation'}
               maxLength={60}
               showCount
             />
