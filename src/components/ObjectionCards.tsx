@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Input, Button, Space, Select, Popconfirm, Typography } from 'antd';
+import { Card, Input, Button, Space, AutoComplete, Popconfirm, Typography } from 'antd';
 import { PlusOutlined, DeleteOutlined, CopyOutlined, HolderOutlined } from '@ant-design/icons';
 import {
   DndContext,
@@ -85,23 +85,16 @@ function SortableCard({
         <Space direction="vertical" style={{ width: '100%' }} size="small">
           <div>
             <Text type="secondary" style={{ fontSize: 12 }}>Objection Label</Text>
-            <Select
+            <AutoComplete
               style={{ width: '100%' }}
-              placeholder="Select or type a label"
-              value={card.label || undefined}
+              placeholder="Pick a preset or type your own"
+              value={card.label}
               onChange={(val) => onUpdate(card.id, 'label', val)}
-              showSearch
+              options={OBJECTION_PRESETS.map(p => ({ value: p }))}
+              filterOption={(input, option) =>
+                (option?.value as string).toLowerCase().includes(input.toLowerCase())
+              }
               allowClear
-              options={OBJECTION_PRESETS.map(p => ({ value: p, label: p }))}
-              dropdownRender={(menu) => (
-                <>
-                  {menu}
-                  <div style={{ padding: '4px 8px', fontSize: 12, color: '#999' }}>
-                    Or type a custom label
-                  </div>
-                </>
-              )}
-              onSearch={() => {}}
             />
           </div>
           <div>
