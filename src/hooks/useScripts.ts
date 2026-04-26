@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ScriptData, DEFAULT_SCRIPT_DATA, SavedScript } from '../types';
+import { ScriptData, DEFAULT_SCRIPT_DATA, SavedScript, CustomSection, BranchEntry, SectionId } from '../types';
 import type { Bridge } from '../lib/bridge';
 
 const SCRIPTS_KEY = 'script-builder.scripts.v1';
@@ -22,6 +22,65 @@ function newId(): string {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function normalizeCustomSection(raw: unknown): CustomSection | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || !r.id) return null;
+  const kind = r.kind === 'branch' ? 'branch' : 'free-text';
+  const branchesRaw = Array.isArray(r.branches) ? r.branches : [];
+  const branches: BranchEntry[] = [];
+  for (const b of branchesRaw) {
+    if (!b || typeof b !== 'object') continue;
+    const br = b as Record<string, unknown>;
+    branches.push({
+      id: typeof br.id === 'string' && br.id ? br.id : newId(),
+      trigger: typeof br.trigger === 'string' ? br.trigger : '',
+      response: typeof br.response === 'string' ? br.response : '',
+    });
+  }
+  return {
+    id: r.id,
+    kind,
+    label: typeof r.label === 'string' && r.label.trim() ? r.label : 'Custom Section',
+    body: typeof r.body === 'string' ? r.body : '',
+    branches,
+  };
+}
+
+function normalizeScriptData(raw: unknown): ScriptData {
+  const merged: ScriptData = { ...DEFAULT_SCRIPT_DATA, ...(raw && typeof raw === 'object' ? raw as Partial<ScriptData> : {}) };
+
+  // qualifyingQuestion: legacy rows had { primary } only
+  const qq = (raw && typeof raw === 'object') ? (raw as any).qualifyingQuestion : null;
+  merged.qualifyingQuestion = {
+    primary: typeof qq?.primary === 'string' ? qq.primary : '',
+    extra: Array.isArray(qq?.extra) ? qq.extra.filter((x: unknown): x is string => typeof x === 'string') : [],
+  };
+
+  // customSections
+  const customRaw = (raw && typeof raw === 'object') ? (raw as any).customSections : null;
+  const customSections: CustomSection[] = [];
+  if (Array.isArray(customRaw)) {
+    for (const c of customRaw) {
+      const norm = normalizeCustomSection(c);
+      if (norm) customSections.push(norm);
+    }
+  }
+  merged.customSections = customSections;
+
+  // sectionOrder + hiddenSections — keep only string entries; reconcileSectionOrder in lib/sections handles the rest
+  const orderRaw = (raw && typeof raw === 'object') ? (raw as any).sectionOrder : null;
+  merged.sectionOrder = Array.isArray(orderRaw)
+    ? orderRaw.filter((x: unknown): x is SectionId => typeof x === 'string')
+    : [...DEFAULT_SCRIPT_DATA.sectionOrder];
+  const hiddenRaw = (raw && typeof raw === 'object') ? (raw as any).hiddenSections : null;
+  merged.hiddenSections = Array.isArray(hiddenRaw)
+    ? hiddenRaw.filter((x: unknown): x is SectionId => typeof x === 'string')
+    : [];
+
+  return merged;
 }
 
 function makeScript(name: string, script: ScriptData = DEFAULT_SCRIPT_DATA): SavedScript {
@@ -50,9 +109,7 @@ function hydrateFromBridge(bridge: Bridge): { scripts: SavedScript[]; activeId: 
   for (const item of bridge.init.items) {
     const v = item.value as Partial<SavedScript> | null | undefined;
     if (!v || typeof v !== 'object') continue;
-    const script = (v.script && typeof v.script === 'object')
-      ? { ...DEFAULT_SCRIPT_DATA, ...v.script }
-      : DEFAULT_SCRIPT_DATA;
+    const script = normalizeScriptData(v.script);
     scripts.push({
       data_id: item.data_id,
       type: 'script',
@@ -73,7 +130,12 @@ function loadFromLocalStorage(): { scripts: SavedScript[]; drafts: DraftMap; act
     const raw = localStorage.getItem(SCRIPTS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as SavedScript[];
-      if (Array.isArray(parsed)) scripts = parsed;
+      if (Array.isArray(parsed)) {
+        scripts = parsed.map(s => ({
+          ...s,
+          script: normalizeScriptData(s.script),
+        }));
+      }
     }
   } catch {}
 
@@ -85,7 +147,7 @@ function loadFromLocalStorage(): { scripts: SavedScript[]; drafts: DraftMap; act
       const legacy = localStorage.getItem(LEGACY_KEY);
       if (legacy) {
         const parsed = JSON.parse(legacy);
-        const migrated = makeScript('My Script', { ...DEFAULT_SCRIPT_DATA, ...parsed });
+        const migrated = makeScript('My Script', normalizeScriptData(parsed));
         scripts = [migrated];
         localStorage.removeItem(LEGACY_KEY);
         try { localStorage.setItem(SCRIPTS_KEY, JSON.stringify(scripts)); } catch {}
@@ -154,7 +216,8 @@ export function useScripts() {
           if (parsed && typeof parsed === 'object') {
             for (const id of Object.keys(parsed)) {
               if (unsyncedIds.has(id) && parsed[id] && typeof parsed[id] === 'object') {
-                unsyncedRecords[id] = parsed[id] as SavedScript;
+                const rec = parsed[id] as SavedScript;
+                unsyncedRecords[id] = { ...rec, script: normalizeScriptData(rec.script) };
               }
             }
           }

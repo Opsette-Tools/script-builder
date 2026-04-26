@@ -1,7 +1,8 @@
 import React from 'react';
 import { Card, Button, Space, Tooltip, Typography, Divider, message, Tag } from 'antd';
 import { CopyOutlined, PrinterOutlined, FileTextOutlined } from '@ant-design/icons';
-import { ScriptData, ScriptStyle } from '../types';
+import { ScriptData, ScriptStyle, BuiltinSectionKey, CustomSection } from '../types';
+import { getSectionList, SectionListEntry, builtinLabel } from '../lib/sections';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -27,43 +28,6 @@ function getGreeting(data: ScriptData): string | null {
   return base;
 }
 
-function buildPlainText(data: ScriptData): string {
-  const lines: string[] = [`=== COLD CALL SCRIPT (${styleLabel(data.scriptStyle)}) ===\n`];
-  const greeting = getGreeting(data);
-  if (greeting) { lines.push('OPENER:', greeting, ''); }
-
-  if (data.scriptStyle === 'permission' && data.permissionAsk.line) {
-    lines.push('PERMISSION:', data.permissionAsk.line, '');
-  }
-  if (data.scriptStyle === 'question-led' && data.qualifyingQuestion.primary) {
-    lines.push('OPENING QUESTION:', data.qualifyingQuestion.primary, '');
-  }
-  if (data.reasonForCall.why) { lines.push('REASON:', data.reasonForCall.why, ''); }
-  if (data.problem.mainPain) { lines.push('PROBLEM:', data.problem.mainPain, ''); }
-  if (data.scriptStyle !== 'question-led' && data.agitate.consequence) {
-    lines.push('WHY IT MATTERS:', data.agitate.consequence, '');
-  }
-  if (data.valueProp.pitch) { lines.push('VALUE:', data.valueProp.pitch, ''); }
-  if (data.scriptStyle !== 'question-led' && data.qualifyingQuestion.primary) {
-    lines.push('ASK:', data.qualifyingQuestion.primary, '');
-  }
-  if (data.cta.line) { lines.push('NEXT STEP:', data.cta.line, ''); }
-  if (data.objections.length > 0) {
-    lines.push('OBJECTIONS:');
-    data.objections.forEach((o, i) => {
-      lines.push(`  #${i + 1} ${o.label || 'Untitled'}`);
-      if (o.objectionLine) lines.push(`    They say: "${o.objectionLine}"`);
-      if (o.rebuttal) lines.push(`    You say: "${o.rebuttal}"`);
-      if (o.followUpQuestion) lines.push(`    Then ask: "${o.followUpQuestion}"`);
-      if (o.fallbackCta) lines.push(`    Fallback: "${o.fallbackCta}"`);
-    });
-    lines.push('');
-  }
-  if (data.close.positive) lines.push(`CLOSE (yes): ${data.close.positive}`);
-  if (data.close.neutral) lines.push(`CLOSE (no): ${data.close.neutral}`);
-  return lines.join('\n');
-}
-
 function styleLabel(s: ScriptStyle): string {
   switch (s) {
     case 'permission': return 'Permission-Based';
@@ -74,60 +38,313 @@ function styleLabel(s: ScriptStyle): string {
   }
 }
 
-// Maps each script field to its section number in the Builder for a given style.
-// Keep in sync with ScriptBuilder.tsx section ordering.
-type FieldKey = 'opener' | 'permissionAsk' | 'qualifyingQuestion' | 'reasonForCall' | 'problem' | 'agitate' | 'valueProp' | 'cta' | 'objections' | 'close';
-
-function sectionNumberMap(style: ScriptStyle): Partial<Record<FieldKey, number>> {
-  switch (style) {
-    case 'permission':
-      return { opener: 1, permissionAsk: 2, reasonForCall: 3, problem: 4, agitate: 5, valueProp: 6, qualifyingQuestion: 7, cta: 8, objections: 9, close: 10 };
-    case 'question-led':
-      return { opener: 1, qualifyingQuestion: 2, reasonForCall: 3, problem: 4, agitate: 5, valueProp: 6, cta: 7, objections: 8, close: 9 };
-    case 'direct':
-    case 'referral':
-    case 'value-first':
-    default:
-      return { opener: 1, reasonForCall: 2, problem: 3, agitate: 4, valueProp: 5, qualifyingQuestion: 6, cta: 7, objections: 8, close: 9 };
+function builtinHasContent(key: BuiltinSectionKey, data: ScriptData): boolean {
+  switch (key) {
+    case 'opener': return !!getGreeting(data);
+    case 'permissionAsk': return !!data.permissionAsk.line.trim();
+    case 'qualifyingQuestion':
+      return !!data.qualifyingQuestion.primary.trim()
+        || (data.qualifyingQuestion.extra ?? []).some(q => q.trim());
+    case 'reasonForCall': return !!data.reasonForCall.why.trim();
+    case 'problem': return !!data.problem.mainPain.trim();
+    case 'agitate': return !!data.agitate.consequence.trim();
+    case 'valueProp': return !!data.valueProp.pitch.trim();
+    case 'cta': return !!data.cta.line.trim();
+    case 'objections': return data.objections.length > 0;
+    case 'close': return !!data.close.positive.trim() || !!data.close.neutral.trim();
   }
+}
+
+function customHasContent(c: CustomSection): boolean {
+  if (c.kind === 'free-text') return !!c.body.trim();
+  return c.branches.some(b => b.trigger.trim() || b.response.trim());
+}
+
+function buildPlainText(data: ScriptData): string {
+  const lines: string[] = [`=== COLD CALL SCRIPT (${styleLabel(data.scriptStyle)}) ===\n`];
+  const visible = getSectionList(data).filter(e => !e.hidden);
+
+  for (const entry of visible) {
+    if (entry.isCustom && entry.custom) {
+      if (!customHasContent(entry.custom)) continue;
+      lines.push(`${entry.number}. ${entry.label.toUpperCase()}:`);
+      if (entry.custom.kind === 'free-text') {
+        lines.push(entry.custom.body, '');
+      } else {
+        for (const b of entry.custom.branches) {
+          if (!b.trigger.trim() && !b.response.trim()) continue;
+          lines.push(`  IF: ${b.trigger}`);
+          lines.push(`  YOU SAY: ${b.response}`);
+        }
+        lines.push('');
+      }
+      continue;
+    }
+    const key = entry.builtinKey!;
+    if (!builtinHasContent(key, data)) continue;
+    const heading = `${entry.number}. ${builtinLabel(key, data.scriptStyle).toUpperCase()}`;
+    switch (key) {
+      case 'opener': {
+        const g = getGreeting(data);
+        if (g) lines.push(`${heading}:`, g, '');
+        break;
+      }
+      case 'permissionAsk':
+        lines.push(`${heading}:`, data.permissionAsk.line, '');
+        break;
+      case 'qualifyingQuestion': {
+        lines.push(`${heading}:`);
+        if (data.qualifyingQuestion.primary.trim()) lines.push(data.qualifyingQuestion.primary);
+        for (const q of data.qualifyingQuestion.extra ?? []) {
+          if (q.trim()) lines.push(`  → ${q}`);
+        }
+        lines.push('');
+        break;
+      }
+      case 'reasonForCall':
+        lines.push(`${heading}:`, data.reasonForCall.why, '');
+        break;
+      case 'problem':
+        lines.push(`${heading}:`, data.problem.mainPain, '');
+        break;
+      case 'agitate':
+        lines.push(`${heading}:`, data.agitate.consequence, '');
+        break;
+      case 'valueProp':
+        lines.push(`${heading}:`, data.valueProp.pitch, '');
+        break;
+      case 'cta':
+        lines.push(`${heading}:`, data.cta.line, '');
+        break;
+      case 'objections':
+        lines.push(`${heading}:`);
+        data.objections.forEach((o, i) => {
+          lines.push(`  #${i + 1} ${o.label || 'Untitled'}`);
+          if (o.objectionLine) lines.push(`    They say: "${o.objectionLine}"`);
+          if (o.rebuttal) lines.push(`    You say: "${o.rebuttal}"`);
+          if (o.followUpQuestion) lines.push(`    Then ask: "${o.followUpQuestion}"`);
+          if (o.fallbackCta) lines.push(`    Fallback: "${o.fallbackCta}"`);
+        });
+        lines.push('');
+        break;
+      case 'close':
+        lines.push(`${heading}:`);
+        if (data.close.positive) lines.push(`  ✓ If yes: ${data.close.positive}`);
+        if (data.close.neutral) lines.push(`  ✗ If no: ${data.close.neutral}`);
+        lines.push('');
+        break;
+    }
+  }
+  return lines.join('\n').trimEnd();
 }
 
 const ScriptLine: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({ children, style }) => (
   <Paragraph style={{ fontSize: 15, marginBottom: 6, ...style }}>{children}</Paragraph>
 );
 
-const Section: React.FC<{ title: string; editNums?: number[]; children: React.ReactNode }> = ({ title, editNums, children }) => (
-  <div style={{ marginBottom: 24 }}>
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-      <Text strong style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.5, opacity: 0.5 }}>
-        {title}
-      </Text>
-      {editNums && editNums.length === 1 && (
-        <Text style={{ fontSize: 11, color: '#1677ff', fontWeight: 500 }} className="no-print">
-          edit ({editNums[0]})
-        </Text>
-      )}
-    </div>
-    <Divider style={{ margin: '4px 0 10px' }} />
-    {children}
+const SectionHeader: React.FC<{ entry: SectionListEntry }> = ({ entry }) => (
+  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+    <Tag color="blue" style={{ marginInlineEnd: 0 }}>{entry.number}</Tag>
+    <Text strong style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.5, opacity: 0.7 }}>
+      {entry.label}
+    </Text>
   </div>
 );
 
-const EditHint: React.FC<{ n?: number }> = ({ n }) => {
-  if (!n) return null;
+const renderBuiltinPreview = (entry: SectionListEntry, data: ScriptData): React.ReactNode => {
+  const key = entry.builtinKey!;
+  if (!builtinHasContent(key, data)) return null;
+
+  switch (key) {
+    case 'opener': {
+      const g = getGreeting(data);
+      if (!g) return null;
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeader entry={entry} />
+          <Divider style={{ margin: '4px 0 10px' }} />
+          <ScriptLine><Text italic>"{g}"</Text></ScriptLine>
+        </div>
+      );
+    }
+    case 'permissionAsk':
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeader entry={entry} />
+          <Divider style={{ margin: '4px 0 10px' }} />
+          <ScriptLine><Text italic>"{data.permissionAsk.line}"</Text></ScriptLine>
+        </div>
+      );
+    case 'qualifyingQuestion':
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeader entry={entry} />
+          <Divider style={{ margin: '4px 0 10px' }} />
+          {data.qualifyingQuestion.primary.trim() && (
+            <ScriptLine>
+              <Text strong>Ask: </Text>
+              <Text italic>"{data.qualifyingQuestion.primary}"</Text>
+            </ScriptLine>
+          )}
+          {(data.qualifyingQuestion.extra ?? []).map((q, idx) => (
+            q.trim() ? (
+              <ScriptLine key={idx} style={{ marginLeft: 16 }}>
+                <Text strong>→ Then: </Text>
+                <Text italic>"{q}"</Text>
+              </ScriptLine>
+            ) : null
+          ))}
+        </div>
+      );
+    case 'reasonForCall':
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeader entry={entry} />
+          <Divider style={{ margin: '4px 0 10px' }} />
+          <ScriptLine><Text italic>"{data.reasonForCall.why}"</Text></ScriptLine>
+        </div>
+      );
+    case 'problem':
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeader entry={entry} />
+          <Divider style={{ margin: '4px 0 10px' }} />
+          <ScriptLine><Text italic>"{data.problem.mainPain}"</Text></ScriptLine>
+        </div>
+      );
+    case 'agitate':
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeader entry={entry} />
+          <Divider style={{ margin: '4px 0 10px' }} />
+          <ScriptLine><Text italic>"{data.agitate.consequence}"</Text></ScriptLine>
+        </div>
+      );
+    case 'valueProp':
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeader entry={entry} />
+          <Divider style={{ margin: '4px 0 10px' }} />
+          <ScriptLine><Text italic>"{data.valueProp.pitch}"</Text></ScriptLine>
+        </div>
+      );
+    case 'cta':
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeader entry={entry} />
+          <Divider style={{ margin: '4px 0 10px' }} />
+          <ScriptLine>
+            <Text strong>Next step: </Text>
+            <Text italic>"{data.cta.line}"</Text>
+          </ScriptLine>
+        </div>
+      );
+    case 'objections':
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeader entry={entry} />
+          <Divider style={{ margin: '4px 0 10px' }} />
+          {data.objections.map((obj) => (
+            <Card key={obj.id} size="small" style={{ marginBottom: 10, background: 'rgba(0,0,0,0.02)' }}>
+              {(obj.objectionLine || obj.label) && (
+                <div>
+                  <Text strong style={{ color: '#cf1322' }}>They say: </Text>
+                  <Text italic>"{obj.objectionLine || obj.label}"</Text>
+                </div>
+              )}
+              {obj.rebuttal && (
+                <div style={{ marginTop: 6 }}>
+                  <Text strong style={{ color: '#389e0d' }}>You say: </Text>
+                  <Text italic>"{obj.rebuttal}"</Text>
+                </div>
+              )}
+              {obj.followUpQuestion && (
+                <div style={{ marginTop: 6 }}>
+                  <Text strong>Then ask: </Text>
+                  <Text italic>"{obj.followUpQuestion}"</Text>
+                </div>
+              )}
+              {obj.fallbackCta && (
+                <div style={{ marginTop: 6 }}>
+                  <Text type="secondary">Fallback: "{obj.fallbackCta}"</Text>
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
+      );
+    case 'close':
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeader entry={entry} />
+          <Divider style={{ margin: '4px 0 10px' }} />
+          {data.close.positive && (
+            <ScriptLine>
+              <Text strong style={{ color: '#389e0d' }}>✓ If yes: </Text>
+              <Text italic>"{data.close.positive}"</Text>
+            </ScriptLine>
+          )}
+          {data.close.neutral && (
+            <ScriptLine>
+              <Text strong>✗ If no: </Text>
+              <Text italic>"{data.close.neutral}"</Text>
+            </ScriptLine>
+          )}
+        </div>
+      );
+  }
+};
+
+const renderCustomPreview = (entry: SectionListEntry): React.ReactNode => {
+  const c = entry.custom!;
+  if (!customHasContent(c)) return null;
+
+  if (c.kind === 'free-text') {
+    return (
+      <div style={{ marginBottom: 24 }}>
+        <SectionHeader entry={entry} />
+        <Divider style={{ margin: '4px 0 10px' }} />
+        {c.body.split(/\n\n+/).map((para, i) => (
+          <ScriptLine key={i}><Text italic>"{para.trim()}"</Text></ScriptLine>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <Text style={{ fontSize: 11, color: '#1677ff', marginLeft: 6, fontWeight: 500 }} className="no-print">
-      ({n})
-    </Text>
+    <div style={{ marginBottom: 24 }}>
+      <SectionHeader entry={entry} />
+      <Divider style={{ margin: '4px 0 10px' }} />
+      {c.branches.map(b => (
+        (b.trigger.trim() || b.response.trim()) ? (
+          <Card key={b.id} size="small" style={{ marginBottom: 10, background: 'rgba(125, 60, 200, 0.04)' }}>
+            {b.trigger.trim() && (
+              <div>
+                <Text strong style={{ color: '#722ed1' }}>If they: </Text>
+                <Text italic>"{b.trigger}"</Text>
+              </div>
+            )}
+            {b.response.trim() && (
+              <div style={{ marginTop: 6 }}>
+                <Text strong style={{ color: '#389e0d' }}>You say: </Text>
+                <Text italic>"{b.response}"</Text>
+              </div>
+            )}
+          </Card>
+        ) : null
+      ))}
+    </div>
   );
 };
 
 const ScriptPreview: React.FC<Props> = ({ data }) => {
-  const greeting = getGreeting(data);
+  const entries = getSectionList(data).filter(e => !e.hidden);
   const style = data.scriptStyle;
-  const hasContent = greeting || data.permissionAsk.line || data.reasonForCall.why || data.problem.mainPain;
-  const sn = sectionNumberMap(style);
-  const num = (k: FieldKey) => sn[k];
+
+  const hasContent = entries.some(e => {
+    if (e.isCustom && e.custom) return customHasContent(e.custom);
+    return e.builtinKey ? builtinHasContent(e.builtinKey, data) : false;
+  });
 
   const handleCopy = () => {
     navigator.clipboard.writeText(buildPlainText(data)).then(
@@ -145,256 +362,6 @@ const ScriptPreview: React.FC<Props> = ({ data }) => {
     a.click();
     URL.revokeObjectURL(url);
   };
-
-  // Render the pitch body (problem → agitate → value → question → CTA)
-  const renderPitchBody = (includeAgitate: boolean, includeQuestion: boolean) => (
-    <>
-      {data.reasonForCall.why && style !== 'question-led' && (
-        <ScriptLine>
-          <Text italic>"{data.reasonForCall.why}"</Text>
-          <EditHint n={num('reasonForCall')} />
-        </ScriptLine>
-      )}
-      {data.problem.mainPain && (
-        <ScriptLine style={{ marginTop: 12 }}>
-          <Text italic>"{data.problem.mainPain}"</Text>
-          <EditHint n={num('problem')} />
-        </ScriptLine>
-      )}
-      {includeAgitate && data.agitate.consequence && (
-        <ScriptLine>
-          <Text italic>"{data.agitate.consequence}"</Text>
-          <EditHint n={num('agitate')} />
-        </ScriptLine>
-      )}
-      {data.valueProp.pitch && (
-        <ScriptLine style={{ marginTop: 12 }}>
-          <Text italic>"{data.valueProp.pitch}"</Text>
-          <EditHint n={num('valueProp')} />
-        </ScriptLine>
-      )}
-      {includeQuestion && data.qualifyingQuestion.primary && (
-        <ScriptLine style={{ marginTop: 12 }}>
-          <Text strong>Ask: </Text>
-          <Text italic>"{data.qualifyingQuestion.primary}"</Text>
-          <EditHint n={num('qualifyingQuestion')} />
-        </ScriptLine>
-      )}
-      {data.cta.line && (
-        <ScriptLine style={{ marginTop: 12 }}>
-          <Text strong>Next step: </Text>
-          <Text italic>"{data.cta.line}"</Text>
-          <EditHint n={num('cta')} />
-        </ScriptLine>
-      )}
-    </>
-  );
-
-  const renderObjections = () => {
-    if (data.objections.length === 0) return null;
-    return (
-      <Section title="If they push back →" editNums={[num('objections')!]}>
-        {data.objections.map((obj) => (
-          <Card key={obj.id} size="small" style={{ marginBottom: 10, background: 'rgba(0,0,0,0.02)' }}>
-            {(obj.objectionLine || obj.label) && (
-              <div>
-                <Text strong style={{ color: '#cf1322' }}>They say: </Text>
-                <Text italic>"{obj.objectionLine || obj.label}"</Text>
-              </div>
-            )}
-            {obj.rebuttal && (
-              <div style={{ marginTop: 6 }}>
-                <Text strong style={{ color: '#389e0d' }}>You say: </Text>
-                <Text italic>"{obj.rebuttal}"</Text>
-              </div>
-            )}
-            {obj.followUpQuestion && (
-              <div style={{ marginTop: 6 }}>
-                <Text strong>Then ask: </Text>
-                <Text italic>"{obj.followUpQuestion}"</Text>
-              </div>
-            )}
-            {obj.fallbackCta && (
-              <div style={{ marginTop: 6 }}>
-                <Text type="secondary">Fallback: "{obj.fallbackCta}"</Text>
-              </div>
-            )}
-          </Card>
-        ))}
-      </Section>
-    );
-  };
-
-  const renderClose = () => {
-    if (!data.close.positive && !data.close.neutral) return null;
-    return (
-      <Section title="Wrap up" editNums={[num('close')!]}>
-        {data.close.positive && (
-          <ScriptLine>
-            <Text strong style={{ color: '#389e0d' }}>✓ If yes: </Text>
-            <Text italic>"{data.close.positive}"</Text>
-          </ScriptLine>
-        )}
-        {data.close.neutral && (
-          <ScriptLine>
-            <Text strong>✗ If no: </Text>
-            <Text italic>"{data.close.neutral}"</Text>
-          </ScriptLine>
-        )}
-      </Section>
-    );
-  };
-
-  const renderPermissionStyle = () => (
-    <>
-      {greeting && (
-        <Section title="You say" editNums={[num('opener')!]}>
-          <ScriptLine><Text italic>"{greeting}"</Text></ScriptLine>
-        </Section>
-      )}
-      {data.permissionAsk.line && (
-        <Section title="Then ask" editNums={[num('permissionAsk')!]}>
-          <ScriptLine><Text italic>"{data.permissionAsk.line}"</Text></ScriptLine>
-        </Section>
-      )}
-      {(data.reasonForCall.why || data.problem.mainPain || data.valueProp.pitch || data.cta.line) && (
-        <Section title="If they say yes →">
-          {renderPitchBody(true, true)}
-        </Section>
-      )}
-      {renderObjections()}
-      {renderClose()}
-    </>
-  );
-
-  const renderDirectStyle = () => (
-    <>
-      {greeting && (
-        <Section title="You say" editNums={[num('opener')!]}>
-          <ScriptLine><Text italic>"{greeting}"</Text></ScriptLine>
-        </Section>
-      )}
-      {data.reasonForCall.why && (
-        <Section title="Get straight to it →" editNums={[num('reasonForCall')!]}>
-          <ScriptLine><Text italic>"{data.reasonForCall.why}"</Text></ScriptLine>
-        </Section>
-      )}
-      {(data.problem.mainPain || data.valueProp.pitch || data.cta.line) && (
-        <Section title="Build the case →">
-          {data.problem.mainPain && (
-            <ScriptLine><Text italic>"{data.problem.mainPain}"</Text><EditHint n={num('problem')} /></ScriptLine>
-          )}
-          {data.agitate.consequence && (
-            <ScriptLine><Text italic>"{data.agitate.consequence}"</Text><EditHint n={num('agitate')} /></ScriptLine>
-          )}
-          {data.valueProp.pitch && (
-            <ScriptLine style={{ marginTop: 12 }}><Text italic>"{data.valueProp.pitch}"</Text><EditHint n={num('valueProp')} /></ScriptLine>
-          )}
-          {data.qualifyingQuestion.primary && (
-            <ScriptLine style={{ marginTop: 12 }}>
-              <Text strong>Ask: </Text><Text italic>"{data.qualifyingQuestion.primary}"</Text><EditHint n={num('qualifyingQuestion')} />
-            </ScriptLine>
-          )}
-          {data.cta.line && (
-            <ScriptLine style={{ marginTop: 12 }}>
-              <Text strong>Next step: </Text><Text italic>"{data.cta.line}"</Text><EditHint n={num('cta')} />
-            </ScriptLine>
-          )}
-        </Section>
-      )}
-      {renderObjections()}
-      {renderClose()}
-    </>
-  );
-
-  const renderQuestionLedStyle = () => (
-    <>
-      {greeting && (
-        <Section title="You say" editNums={[num('opener')!]}>
-          <ScriptLine><Text italic>"{greeting}"</Text></ScriptLine>
-        </Section>
-      )}
-      {data.qualifyingQuestion.primary && (
-        <Section title="Lead with a question →" editNums={[num('qualifyingQuestion')!]}>
-          <ScriptLine><Text italic>"{data.qualifyingQuestion.primary}"</Text></ScriptLine>
-        </Section>
-      )}
-      {(data.problem.mainPain || data.valueProp.pitch || data.cta.line) && (
-        <Section title="Then transition →">
-          {data.problem.mainPain && (
-            <ScriptLine><Text italic>"{data.problem.mainPain}"</Text><EditHint n={num('problem')} /></ScriptLine>
-          )}
-          {data.valueProp.pitch && (
-            <ScriptLine style={{ marginTop: 12 }}><Text italic>"{data.valueProp.pitch}"</Text><EditHint n={num('valueProp')} /></ScriptLine>
-          )}
-          {data.cta.line && (
-            <ScriptLine style={{ marginTop: 12 }}>
-              <Text strong>Next step: </Text><Text italic>"{data.cta.line}"</Text><EditHint n={num('cta')} />
-            </ScriptLine>
-          )}
-        </Section>
-      )}
-      {renderObjections()}
-      {renderClose()}
-    </>
-  );
-
-  const renderReferralStyle = () => (
-    <>
-      {greeting && (
-        <Section title="You say" editNums={[num('opener')!]}>
-          <ScriptLine><Text italic>"{greeting}"</Text></ScriptLine>
-        </Section>
-      )}
-      {(data.reasonForCall.why || data.problem.mainPain || data.valueProp.pitch || data.cta.line) && (
-        <Section title="Why you're calling →">
-          {renderPitchBody(true, true)}
-        </Section>
-      )}
-      {renderObjections()}
-      {renderClose()}
-    </>
-  );
-
-  const renderValueFirstStyle = () => (
-    <>
-      {greeting && (
-        <Section title="You say" editNums={[num('opener')!]}>
-          <ScriptLine><Text italic>"{greeting}"</Text></ScriptLine>
-        </Section>
-      )}
-      {data.problem.mainPain && (
-        <Section title="Lead with the insight →">
-          <ScriptLine><Text italic>"{data.problem.mainPain}"</Text><EditHint n={num('problem')} /></ScriptLine>
-          {data.agitate.consequence && (
-            <ScriptLine><Text italic>"{data.agitate.consequence}"</Text><EditHint n={num('agitate')} /></ScriptLine>
-          )}
-        </Section>
-      )}
-      {(data.reasonForCall.why || data.valueProp.pitch || data.qualifyingQuestion.primary || data.cta.line) && (
-        <Section title="Then connect it →">
-          {data.reasonForCall.why && (
-            <ScriptLine><Text italic>"{data.reasonForCall.why}"</Text><EditHint n={num('reasonForCall')} /></ScriptLine>
-          )}
-          {data.valueProp.pitch && (
-            <ScriptLine style={{ marginTop: 12 }}><Text italic>"{data.valueProp.pitch}"</Text><EditHint n={num('valueProp')} /></ScriptLine>
-          )}
-          {data.qualifyingQuestion.primary && (
-            <ScriptLine style={{ marginTop: 12 }}>
-              <Text strong>Ask: </Text><Text italic>"{data.qualifyingQuestion.primary}"</Text><EditHint n={num('qualifyingQuestion')} />
-            </ScriptLine>
-          )}
-          {data.cta.line && (
-            <ScriptLine style={{ marginTop: 12 }}>
-              <Text strong>Next step: </Text><Text italic>"{data.cta.line}"</Text><EditHint n={num('cta')} />
-            </ScriptLine>
-          )}
-        </Section>
-      )}
-      {renderObjections()}
-      {renderClose()}
-    </>
-  );
 
   return (
     <Card
@@ -422,7 +389,7 @@ const ScriptPreview: React.FC<Props> = ({ data }) => {
     >
       {!hasContent ? (
         <Paragraph type="secondary" style={{ textAlign: 'center', padding: '40px 0' }}>
-          Start filling in the form above to see your script here.
+          Start filling in the form to see your script here.
         </Paragraph>
       ) : (
         <div style={{ lineHeight: 1.9 }}>
@@ -432,17 +399,21 @@ const ScriptPreview: React.FC<Props> = ({ data }) => {
             className="no-print"
             style={{ fontSize: 12, marginBottom: 16, padding: '8px 12px', background: 'rgba(0,0,0,0.03)', borderRadius: 6 }}
           >
-            Read this out loud. If a line doesn't sound like you, rewrite it in the builder. The numbers in parentheses point to the section each line came from.
+            Read this out loud. If a line doesn't sound like you, rewrite it in the builder. The numbered tags match the section order on the left.
           </Paragraph>
-          {style === 'permission' && renderPermissionStyle()}
-          {style === 'direct' && renderDirectStyle()}
-          {style === 'question-led' && renderQuestionLedStyle()}
-          {style === 'referral' && renderReferralStyle()}
-          {style === 'value-first' && renderValueFirstStyle()}
+          {entries.map(entry => (
+            <React.Fragment key={entry.id}>
+              {entry.isCustom ? renderCustomPreview(entry) : renderBuiltinPreview(entry, data)}
+            </React.Fragment>
+          ))}
           {(data.afterCall.ifYes || data.afterCall.ifNo || data.afterCall.notes) && (
             <>
               <Divider />
-              <Section title="📝 Internal Notes (not part of the script)">
+              <div style={{ marginBottom: 24 }}>
+                <Text strong style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.5, opacity: 0.5 }}>
+                  📝 Internal Notes (not part of the script)
+                </Text>
+                <Divider style={{ margin: '4px 0 10px' }} />
                 {data.afterCall.ifYes && (
                   <ScriptLine>
                     <Text strong style={{ color: '#389e0d' }}>✓ If yes: </Text>
@@ -461,7 +432,7 @@ const ScriptPreview: React.FC<Props> = ({ data }) => {
                     <Text>{data.afterCall.notes}</Text>
                   </ScriptLine>
                 )}
-              </Section>
+              </div>
             </>
           )}
         </div>

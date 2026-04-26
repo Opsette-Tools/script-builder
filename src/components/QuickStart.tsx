@@ -71,8 +71,8 @@ const QuickStart: React.FC<Props> = ({ data, onApplyTemplate }) => {
         ? { pitch: replaceToken(selected.fill.valueProp.pitch, token) }
         : DEFAULT_SCRIPT_DATA.valueProp,
       qualifyingQuestion: selected.fill.qualifyingQuestion
-        ? { primary: replaceToken(selected.fill.qualifyingQuestion.primary, token) }
-        : DEFAULT_SCRIPT_DATA.qualifyingQuestion,
+        ? { primary: replaceToken(selected.fill.qualifyingQuestion.primary, token), extra: [] }
+        : { ...DEFAULT_SCRIPT_DATA.qualifyingQuestion, extra: [] },
       cta: selected.fill.cta
         ? { line: replaceToken(selected.fill.cta.line, token) }
         : DEFAULT_SCRIPT_DATA.cta,
@@ -88,6 +88,9 @@ const QuickStart: React.FC<Props> = ({ data, onApplyTemplate }) => {
         ...(selected.fill.afterCall || {}),
         notes: data.afterCall.notes || DEFAULT_SCRIPT_DATA.afterCall.notes,
       },
+      sectionOrder: data.sectionOrder ?? [...DEFAULT_SCRIPT_DATA.sectionOrder],
+      hiddenSections: data.hiddenSections ?? [],
+      customSections: data.customSections ?? [],
     };
 
     onApplyTemplate(next);

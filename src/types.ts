@@ -24,6 +24,36 @@ export interface AfterCallData {
   notes: string;
 }
 
+export type BuiltinSectionKey =
+  | 'opener'
+  | 'permissionAsk'
+  | 'qualifyingQuestion'
+  | 'reasonForCall'
+  | 'problem'
+  | 'agitate'
+  | 'valueProp'
+  | 'cta'
+  | 'objections'
+  | 'close';
+
+export type SectionId = BuiltinSectionKey | string;
+
+export type CustomSectionKind = 'free-text' | 'branch';
+
+export interface BranchEntry {
+  id: string;
+  trigger: string;
+  response: string;
+}
+
+export interface CustomSection {
+  id: string;
+  kind: CustomSectionKind;
+  label: string;
+  body: string;
+  branches: BranchEntry[];
+}
+
 export interface ScriptData {
   scriptStyle: ScriptStyle;
   opener: {
@@ -49,6 +79,7 @@ export interface ScriptData {
   };
   qualifyingQuestion: {
     primary: string;
+    extra: string[];
   };
   cta: {
     line: string;
@@ -59,7 +90,23 @@ export interface ScriptData {
     neutral: string;
   };
   afterCall: AfterCallData;
+  sectionOrder: SectionId[];
+  hiddenSections: SectionId[];
+  customSections: CustomSection[];
 }
+
+export const DEFAULT_SECTION_ORDER: BuiltinSectionKey[] = [
+  'opener',
+  'permissionAsk',
+  'qualifyingQuestion',
+  'reasonForCall',
+  'problem',
+  'agitate',
+  'valueProp',
+  'cta',
+  'objections',
+  'close',
+];
 
 export const DEFAULT_SCRIPT_DATA: ScriptData = {
   scriptStyle: 'permission',
@@ -69,11 +116,14 @@ export const DEFAULT_SCRIPT_DATA: ScriptData = {
   problem: { mainPain: '' },
   agitate: { consequence: '' },
   valueProp: { pitch: '' },
-  qualifyingQuestion: { primary: '' },
+  qualifyingQuestion: { primary: '', extra: [] },
   cta: { line: '' },
   objections: [],
   close: { positive: '', neutral: '' },
   afterCall: { ifYes: '', ifNo: '', notes: '' },
+  sectionOrder: [...DEFAULT_SECTION_ORDER],
+  hiddenSections: [],
+  customSections: [],
 };
 
 export const SCRIPT_STYLES: { value: ScriptStyle; label: string; hint: string }[] = [
