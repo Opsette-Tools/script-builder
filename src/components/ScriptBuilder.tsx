@@ -67,8 +67,8 @@ const SHAPE_COLOR: Record<SectionShape, string> = {
 };
 
 const SubGroup: React.FC<{ label: string; children: React.ReactNode; first?: boolean }> = ({ label, children, first }) => (
-  <div style={{ marginTop: first ? 0 : 12, paddingTop: first ? 0 : 12, borderTop: first ? 'none' : '1px dashed rgba(0,0,0,0.08)' }}>
-    <Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.2, opacity: 0.65, display: 'block', marginBottom: 6 }}>
+  <div style={{ marginTop: first ? 0 : 14, paddingTop: first ? 0 : 14, borderTop: first ? 'none' : '1.5px solid rgba(0,0,0,0.28)' }}>
+    <Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.2, opacity: 0.85, display: 'block', marginBottom: 6 }}>
       {label}
     </Text>
     {children}
