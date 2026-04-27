@@ -155,7 +155,9 @@ const App: React.FC = () => {
             <EmptyScriptState onCreate={createScript} />
           ) : (
           <>
-          <QuickStart data={data} onApplyTemplate={replaceAll} />
+          <div className="no-print">
+            <QuickStart data={data} onApplyTemplate={replaceAll} />
+          </div>
           <div className="no-print" style={{ marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
               <Text strong style={{ fontSize: 14 }}>Script Style:</Text>
@@ -179,10 +181,9 @@ const App: React.FC = () => {
             </Text>
           </div>
           <Row gutter={[24, 24]}>
-            <Col xs={24} lg={12}>
+            <Col xs={24} lg={12} className="no-print">
               {activeDirty ? (
                 <Alert
-                  className="no-print"
                   type="warning"
                   showIcon
                   message="Unsaved changes — only stored on this device until you click Save."
@@ -190,7 +191,6 @@ const App: React.FC = () => {
                 />
               ) : (data.reasonForCall.why || data.problem.mainPain || data.valueProp.pitch || data.cta.line) && (
                 <Alert
-                  className="no-print"
                   type="info"
                   showIcon
                   message="Loading a new starter above will overwrite the fields below (your name, company, and referrer will be kept)."

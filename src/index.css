@@ -11,11 +11,32 @@ body {
 }
 
 @media print {
+  @page {
+    margin: 0.5in;
+  }
+
   .no-print {
     display: none !important;
   }
+
+  /* The preview lives in a position:sticky wrapper on screen so it follows
+     the user's scroll. For print we want it flowing from the top of the page. */
   .script-preview {
     box-shadow: none !important;
     border: none !important;
+  }
+
+  .ant-layout,
+  .ant-layout-content,
+  .ant-row,
+  .ant-col {
+    background: transparent !important;
+  }
+
+  /* Reset any sticky/scroll context inherited from the screen layout. */
+  body, html {
+    background: #fff !important;
+    color: #000 !important;
+    overflow: visible !important;
   }
 }

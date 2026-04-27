@@ -363,6 +363,10 @@ const ScriptPreview: React.FC<Props> = ({ data }) => {
     URL.revokeObjectURL(url);
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <Card
       className="script-preview"
@@ -381,7 +385,7 @@ const ScriptPreview: React.FC<Props> = ({ data }) => {
               <Button size="small" type="text" icon={<FileTextOutlined />} onClick={handleExport} disabled={!hasContent} />
             </Tooltip>
             <Tooltip title="Print">
-              <Button size="small" type="text" icon={<PrinterOutlined />} onClick={() => window.print()} disabled={!hasContent} />
+              <Button size="small" type="text" icon={<PrinterOutlined />} onClick={handlePrint} disabled={!hasContent} />
             </Tooltip>
           </Space>
         </div>
