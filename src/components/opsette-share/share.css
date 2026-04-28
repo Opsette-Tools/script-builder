@@ -107,28 +107,37 @@
 .ops-share-url {
   flex: 1;
   min-width: 0;
-  font: inherit;
+  font-family: inherit;
   font-size: 0.85rem;
-  padding: 9px 12px;
+  line-height: 1.2;
+  height: 38px;
+  padding: 0 12px;
   border: 1px solid #e5e5e5;
   border-radius: 10px;
   background: #fafafa;
   color: #333;
+  box-sizing: border-box;
 }
 .ops-share-url:focus { outline: none; border-color: #426f62; background: #fff; }
 
 .ops-share-btn {
-  font: inherit;
+  font-family: inherit;
   font-weight: 600;
   font-size: 0.92rem;
-  padding: 10px 16px;
+  line-height: 1;
+  padding: 0 16px;
   border-radius: 10px;
   border: 1px solid transparent;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .ops-share-btn-primary {
   width: 100%;
+  height: 44px;
   background: #2f4f46;
   color: #fff;
   border-color: #2f4f46;
@@ -136,6 +145,7 @@
 }
 .ops-share-btn-primary:hover { background: #426f62; border-color: #426f62; }
 .ops-share-btn-secondary {
+  height: 38px;
   background: #fff;
   color: #2f4f46;
   border-color: #d8d8d8;
