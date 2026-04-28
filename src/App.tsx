@@ -9,6 +9,7 @@ import ScriptManager from './components/ScriptManager';
 import EmptyScriptState from './components/EmptyScriptState';
 import { useScripts } from './hooks/useScripts';
 import { ScriptStyle, SCRIPT_STYLES } from './types';
+import { ShareAppButton, OpsetteFooterLogo } from './components/opsette-share';
 
 const { useBreakpoint } = Grid;
 
@@ -140,6 +141,7 @@ const App: React.FC = () => {
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
+            <ShareAppButton />
             {dark ? <BulbFilled /> : <BulbOutlined />}
             <Switch
               checked={dark}
@@ -259,10 +261,7 @@ const App: React.FC = () => {
           <Paragraph type="secondary" italic style={{ fontSize: 12, marginTop: 16 }}>
             Everything runs in your browser. Your scripts are saved locally — nothing is sent to any server.
           </Paragraph>
-          <Paragraph style={{ fontSize: 12, marginTop: 8 }}>
-            Find more tools at{' '}
-            <Link href="https://opsette.io" target="_blank" rel="noopener noreferrer">opsette.io</Link>.
-          </Paragraph>
+          <OpsetteFooterLogo />
         </Modal>
 
         <Modal
@@ -300,6 +299,8 @@ const App: React.FC = () => {
           <Paragraph type="secondary" style={{ fontSize: 12, marginTop: 16 }}>
             Last updated: April 2026
           </Paragraph>
+
+          <OpsetteFooterLogo />
         </Modal>
       </Layout>
     </ConfigProvider>
