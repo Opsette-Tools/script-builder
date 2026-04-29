@@ -19,23 +19,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       devOptions: { enabled: false },
+      manifest: false,
       workbox: {
+        navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/~oauth/],
-      },
-      manifest: {
-        name: 'Script Builder',
-        short_name: 'Script Builder',
-        description: 'Build a structured cold call script step by step.',
-        display: 'standalone',
-        theme_color: '#1677ff',
-        background_color: '#f5f5f5',
-        start_url: BASE,
-        scope: BASE,
-        icons: [
-          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
-        ],
       },
     }),
   ],
