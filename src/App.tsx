@@ -1,19 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ConfigProvider, theme, Layout, Typography, Switch, Space, Row, Col, Segmented, Select, Modal, Alert, Grid, message } from 'antd';
-import { BulbOutlined, BulbFilled } from '@ant-design/icons';
+import { SunOutlined, MoonOutlined } from '@ant-design/icons';
 import ScriptBuilder from './components/ScriptBuilder';
 import ScriptPreview from './components/ScriptPreview';
 import QuickStart from './components/QuickStart';
-import Logo from './components/Logo';
 import ScriptManager from './components/ScriptManager';
 import EmptyScriptState from './components/EmptyScriptState';
 import { useScripts } from './hooks/useScripts';
 import { ScriptStyle, SCRIPT_STYLES } from './types';
-import { ShareAppButton, OpsetteFooterLogo } from './components/opsette-share';
+import { OpsetteFooterLogo } from './components/opsette-share';
+import { OpsetteHeader } from '@/components/opsette-header';
 
 const { useBreakpoint } = Grid;
 
-const { Header, Content, Footer } = Layout;
+const { Content, Footer } = Layout;
 const { Title, Text, Paragraph, Link } = Typography;
 
 const DARK_KEY = 'cold-call-dark-mode';
@@ -76,8 +76,51 @@ const App: React.FC = () => {
 
   useEffect(() => {
     try { localStorage.setItem(DARK_KEY, String(dark)); } catch {}
-    document.body.style.background = dark ? '#141414' : '#f5f5f5';
+    document.body.style.background = dark ? '#000' : '#f5f5f5';
   }, [dark]);
+
+  const headerExtras = (
+    <>
+      <ScriptManager
+        scripts={scripts}
+        activeId={activeId}
+        activeScript={activeScript}
+        isDirty={isDirty}
+        activeDirty={activeDirty}
+        dirtyIds={dirtyIds}
+        onOpen={openScript}
+        onCreate={createScript}
+        onRename={renameScript}
+        onSaveAs={saveAs}
+        onDuplicate={duplicateScript}
+        onDelete={deleteScript}
+        onSave={handleSave}
+        onDiscard={discardDraft}
+      />
+      {!isMobile && (
+        <>
+          <SunOutlined
+            style={{
+              opacity: dark ? 0.4 : 1,
+              fontSize: 13,
+              color: dark ? '#94A3B8' : '#64748B',
+            }}
+          />
+          <Switch checked={dark} onChange={setDark} size="small" />
+          <MoonOutlined
+            style={{
+              opacity: dark ? 1 : 0.4,
+              fontSize: 13,
+              color: dark ? '#E4C49A' : '#94A3B8',
+            }}
+          />
+        </>
+      )}
+      {isMobile && (
+        <Switch checked={dark} onChange={setDark} size="small" />
+      )}
+    </>
+  );
 
   return (
     <ConfigProvider
@@ -90,67 +133,8 @@ const App: React.FC = () => {
       }}
     >
       {messageHolder}
-      <Layout style={{ minHeight: '100vh', background: dark ? '#141414' : '#f5f5f5' }}>
-        <Header
-          className="no-print"
-          style={{
-            background: dark ? '#1f1f1f' : '#fff',
-            borderBottom: `1px solid ${dark ? '#303030' : '#f0f0f0'}`,
-            padding: '14px 24px',
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr auto' : '1fr auto 1fr',
-            gap: isMobile ? 8 : 12,
-            alignItems: 'center',
-            position: 'sticky',
-            top: 0,
-            zIndex: 100,
-            height: 'auto',
-            minHeight: 72,
-            lineHeight: 1.4,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <ScriptManager
-              scripts={scripts}
-              activeId={activeId}
-              activeScript={activeScript}
-              isDirty={isDirty}
-              activeDirty={activeDirty}
-              dirtyIds={dirtyIds}
-              onOpen={openScript}
-              onCreate={createScript}
-              onRename={renameScript}
-              onSaveAs={saveAs}
-              onDuplicate={duplicateScript}
-              onDelete={deleteScript}
-              onSave={handleSave}
-              onDiscard={discardDraft}
-            />
-          </div>
-          {!isMobile && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', textAlign: 'center' }}>
-              <Logo size={32} color="#1677ff" />
-              <div>
-                <Title level={4} style={{ margin: 0, lineHeight: 1.2 }}>
-                  Script Builder
-                </Title>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Build a cold call script in minutes
-                </Text>
-              </div>
-            </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
-            <ShareAppButton />
-            {dark ? <BulbFilled /> : <BulbOutlined />}
-            <Switch
-              checked={dark}
-              onChange={setDark}
-              checkedChildren="Dark"
-              unCheckedChildren="Light"
-            />
-          </div>
-        </Header>
+      <Layout style={{ minHeight: '100vh', background: dark ? '#000' : '#f5f5f5' }}>
+        <OpsetteHeader theme={dark ? 'dark' : 'light'} rightExtra={headerExtras} className="no-print" />
 
         <Content style={{ padding: isMobile ? '20px 16px 16px' : '32px 24px 24px', maxWidth: 1400, margin: '0 auto', width: '100%' }}>
           {!activeScript ? (
