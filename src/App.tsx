@@ -81,22 +81,6 @@ const App: React.FC = () => {
 
   const headerExtras = (
     <>
-      <ScriptManager
-        scripts={scripts}
-        activeId={activeId}
-        activeScript={activeScript}
-        isDirty={isDirty}
-        activeDirty={activeDirty}
-        dirtyIds={dirtyIds}
-        onOpen={openScript}
-        onCreate={createScript}
-        onRename={renameScript}
-        onSaveAs={saveAs}
-        onDuplicate={duplicateScript}
-        onDelete={deleteScript}
-        onSave={handleSave}
-        onDiscard={discardDraft}
-      />
       {!isMobile && (
         <>
           <SunOutlined
@@ -122,6 +106,25 @@ const App: React.FC = () => {
     </>
   );
 
+  const scriptManager = (
+    <ScriptManager
+      scripts={scripts}
+      activeId={activeId}
+      activeScript={activeScript}
+      isDirty={isDirty}
+      activeDirty={activeDirty}
+      dirtyIds={dirtyIds}
+      onOpen={openScript}
+      onCreate={createScript}
+      onRename={renameScript}
+      onSaveAs={saveAs}
+      onDuplicate={duplicateScript}
+      onDelete={deleteScript}
+      onSave={handleSave}
+      onDiscard={discardDraft}
+    />
+  );
+
   return (
     <ConfigProvider
       theme={{
@@ -137,6 +140,9 @@ const App: React.FC = () => {
         <OpsetteHeader theme={dark ? 'dark' : 'light'} rightExtra={headerExtras} className="no-print" />
 
         <Content style={{ padding: isMobile ? '20px 16px 16px' : '32px 24px 24px', maxWidth: 1400, margin: '0 auto', width: '100%' }}>
+          <div className="no-print" style={{ marginBottom: 20, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+            {scriptManager}
+          </div>
           {!activeScript ? (
             <EmptyScriptState onCreate={createScript} />
           ) : (
